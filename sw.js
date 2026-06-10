@@ -6,7 +6,7 @@
    Bump CACHE_VERSION when you deploy new app files.
 ═══════════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'tool-hub-v1.4';
+const CACHE_VERSION = 'tool-hub-v1.5';
 
 // Files to precache on install
 const PRECACHE_URLS = [
