@@ -295,14 +295,11 @@ html, body {
 /* ── FLOATING BACK BUTTON ───────────────────────────────────── */
 .float-back {
   position: fixed;
-  top: calc(16px + env(safe-area-inset-top, 0px));
-  left: calc(16px + env(safe-area-inset-left, 0px));
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: rgba(15, 15, 19, 0.72);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  left: max(4px, env(safe-area-inset-left, 0px));
+  width: 40px;
+  height: 40px;
+  background: none;
   border: none;
   color: #fff;
   cursor: pointer;
@@ -310,23 +307,13 @@ html, body {
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.5),
-    0 1px 4px rgba(0, 0, 0, 0.3),
-    0 0 0 1px rgba(255, 255, 255, 0.08);
   animation: floatIn .22s cubic-bezier(.4, 0, .2, 1);
-  transition: background .15s, transform .15s, box-shadow .15s;
+  transition: opacity .15s;
   -webkit-tap-highlight-color: transparent;
 }
-.float-back svg { width: 22px; height: 22px; }
-.float-back:hover {
-  background: rgba(30, 30, 40, 0.88);
-  box-shadow:
-    0 6px 24px rgba(0, 0, 0, 0.6),
-    0 2px 6px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.12);
-}
-.float-back:active { transform: scale(.91); }
+.float-back svg { width: 24px; height: 24px; }
+.float-back:hover  { opacity: .7; }
+.float-back:active { opacity: .4; }
 .float-back.hidden { display: none; }
 @keyframes floatIn {
   from { opacity: 0; transform: scale(.7) translateY(-8px); }
