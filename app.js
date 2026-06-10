@@ -94,7 +94,6 @@ const searchInput    = document.getElementById('searchInput');
 const searchClear    = document.getElementById('searchClear');
 const addBtn         = document.getElementById('addBtn');
 const backBtn        = document.getElementById('backBtn');
-const viewerTitle    = document.getElementById('viewerTitle');
 const toolFrame      = document.getElementById('toolFrame');
 // menu
 const menuBtn        = document.getElementById('menuBtn');
@@ -257,10 +256,10 @@ async function launchTool(id) {
   try {
     const tool = await dbGet(id);
     if (!tool) return;
-    viewerTitle.textContent = tool.name;
     toolFrame.srcdoc = tool.html;
     viewer.classList.add('active');
     hub.classList.add('slide-out');
+    backBtn.classList.remove('hidden');
   } catch (err) {
     showToast('Could not open tool', 'error');
   }
@@ -270,6 +269,7 @@ backBtn.addEventListener('click', () => {
   viewer.classList.remove('active');
   hub.classList.remove('slide-out');
   toolFrame.srcdoc = '';
+  backBtn.classList.add('hidden');
 });
 
 // ── ADD TOOL SHEET ────────────────────────────────────────────

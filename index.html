@@ -85,17 +85,15 @@
 
   <!-- ── TOOL VIEWER ── -->
   <div id="viewer" class="screen">
-    <div class="viewer-bar">
-      <button class="icon-btn back-btn" id="backBtn" aria-label="Back to Tool Hub">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
-      </button>
-      <span id="viewerTitle" class="viewer-title"></span>
-      <div style="width:40px"></div>
-    </div>
     <iframe id="toolFrame" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads" allow="clipboard-read; clipboard-write"></iframe>
   </div>
+
+  <!-- ── FLOATING BACK BUTTON ── -->
+  <button id="backBtn" class="float-back hidden" aria-label="Back to Tool Hub">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+  </button>
 
   <!-- ── DROPDOWN MENU ── -->
   <div id="menuDropdown" class="dropdown hidden">
