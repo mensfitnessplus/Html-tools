@@ -94,6 +94,7 @@ const searchInput    = document.getElementById('searchInput');
 const searchClear    = document.getElementById('searchClear');
 const addBtn         = document.getElementById('addBtn');
 const toolFrame      = document.getElementById('toolFrame');
+const toolLoader     = document.getElementById('toolLoader');
 // menu
 const menuBtn        = document.getElementById('menuBtn');
 const menuDropdown   = document.getElementById('menuDropdown');
@@ -250,24 +251,72 @@ searchClear.addEventListener('click', () => {
   searchInput.focus();
 });
 
+// ── LOADER ───────────────────────────────────────────────────
+let launchToken   = 0;
+let loaderTimeout = null;
+
+function showLoader() {
+  toolLoader.classList.add('visible');
+  toolLoader.setAttribute('aria-hidden', 'false');
+}
+
+function hideLoader() {
+  toolLoader.classList.remove('visible');
+  toolLoader.setAttribute('aria-hidden', 'true');
+}
+
 // ── LAUNCH TOOL ──────────────────────────────────────────────
 async function launchTool(id) {
   try {
     const tool = await dbGet(id);
     if (!tool) return;
-    toolFrame.srcdoc = tool.html;
+
+    // Increment token — any prior pending load is now stale
+    const token = ++launchToken;
+
+    // Clear any pending hide timer from a previous launch
+    clearTimeout(loaderTimeout);
+
+    // Show loader immediately before any async work
+    showLoader();
+
     viewer.classList.add('active');
     hub.classList.add('slide-out');
     history.pushState({ toolOpen: true }, '');
+
+    const startTime = Date.now();
+
+    // Set onload before assigning srcdoc
+    toolFrame.onload = () => {
+      // Ignore stale load events
+      if (token !== launchToken) return;
+
+      const elapsed   = Date.now() - startTime;
+      const remaining = Math.max(0, 500 - elapsed);
+
+      loaderTimeout = setTimeout(() => {
+        if (token !== launchToken) return;
+        hideLoader();
+      }, remaining);
+    };
+
+    toolFrame.srcdoc = tool.html;
   } catch (err) {
+    hideLoader();
     showToast('Could not open tool', 'error');
   }
 }
 
 function closeTool() {
+  // Invalidate any in-flight launch
+  launchToken++;
+  clearTimeout(loaderTimeout);
+  hideLoader();
+
   viewer.classList.remove('active');
   hub.classList.remove('slide-out');
-  toolFrame.srcdoc = '';
+  toolFrame.onload  = null;
+  toolFrame.srcdoc  = '';
 }
 
 window.addEventListener('popstate', e => {
