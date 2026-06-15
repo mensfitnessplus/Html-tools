@@ -93,7 +93,9 @@ const noResults      = document.getElementById('noResults');
 const searchInput    = document.getElementById('searchInput');
 const searchClear    = document.getElementById('searchClear');
 const addBtn         = document.getElementById('addBtn');
-const toolFrame      = document.getElementById('toolFrame');
+const tabBar         = document.getElementById('tabBar');
+const tabList        = document.getElementById('tabList');
+const frameContainer = document.getElementById('frameContainer');
 const toolLoader     = document.getElementById('toolLoader');
 // menu
 const menuBtn        = document.getElementById('menuBtn');
@@ -120,7 +122,6 @@ const saveToolBtn    = document.getElementById('saveToolBtn');
 // context menu
 const toolMenu       = document.getElementById('toolMenu');
 const toolMenuOverlay= document.getElementById('toolMenuOverlay');
-const ctxOpenTab     = document.getElementById('ctxOpenTab');
 const ctxRename      = document.getElementById('ctxRename');
 const ctxUpdateHtml  = document.getElementById('ctxUpdateHtml');
 const ctxChangeIcon  = document.getElementById('ctxChangeIcon');
@@ -253,55 +254,175 @@ searchClear.addEventListener('click', () => {
 });
 
 // ── LOADER ───────────────────────────────────────────────────
-let launchToken   = 0;
-let loaderTimeout = null;
-
 function showLoader() {
   toolLoader.classList.add('visible');
   toolLoader.setAttribute('aria-hidden', 'false');
 }
-
 function hideLoader() {
   toolLoader.classList.remove('visible');
   toolLoader.setAttribute('aria-hidden', 'true');
 }
 
-// ── LAUNCH TOOL ──────────────────────────────────────────────
+// ── TAB MANAGER ───────────────────────────────────────────────
+// tabs: Array<{ id, name, icon, frameEl, tabEl }>
+const tabs = [];
+let activeTabId = null;
+let launchToken = 0;
+let loaderTimeout = null;
+
+function tabById(id) { return tabs.find(t => t.id === id) || null; }
+
+function renderTab(tab, isActive) {
+  const el = document.createElement('button');
+  el.className = 'tab' + (isActive ? ' active' : '');
+  el.dataset.tabId = tab.id;
+
+  // icon
+  if (tab.icon) {
+    const img = document.createElement('img');
+    img.className = 'tab-icon';
+    img.src = tab.icon;
+    img.alt = '';
+    el.appendChild(img);
+  } else {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.classList.add('tab-icon-default');
+    svg.innerHTML = `<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>`;
+    el.appendChild(svg);
+  }
+
+  // name
+  const nameEl = document.createElement('span');
+  nameEl.className = 'tab-name';
+  nameEl.textContent = tab.name;
+  el.appendChild(nameEl);
+
+  // close btn
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'tab-close';
+  closeBtn.setAttribute('aria-label', `Close ${tab.name}`);
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    closeTab(tab.id);
+  });
+  el.appendChild(closeBtn);
+
+  el.addEventListener('click', () => activateTab(tab.id));
+  return el;
+}
+
+function activateTab(id) {
+  if (activeTabId === id) return;
+
+  // hide current active frame + deactivate tab el
+  if (activeTabId) {
+    const prev = tabById(activeTabId);
+    if (prev) {
+      prev.frameEl.classList.remove('active');
+      prev.tabEl.classList.remove('active');
+    }
+  }
+
+  activeTabId = id;
+  const tab = tabById(id);
+  if (!tab) return;
+
+  tab.frameEl.classList.add('active');
+  tab.tabEl.classList.add('active');
+  tab.tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+}
+
+function openTab(tool) {
+  // Already open? Just switch.
+  const existing = tabById(tool.id);
+  if (existing) {
+    activateTab(tool.id);
+    return;
+  }
+
+  // Create iframe
+  const frame = document.createElement('iframe');
+  frame.className = 'tool-frame';
+  frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads');
+  frame.setAttribute('allow', 'clipboard-read; clipboard-write');
+  frameContainer.appendChild(frame);
+
+  const tab = { id: tool.id, name: tool.name, icon: tool.icon || null, frameEl: frame, tabEl: null };
+  tabs.push(tab);
+
+  // Create tab element
+  const tabEl = renderTab(tab, false);
+  tab.tabEl = tabEl;
+  tabList.appendChild(tabEl);
+
+  // Load tool with loader
+  const token = ++launchToken;
+  clearTimeout(loaderTimeout);
+  showLoader();
+
+  const startTime = Date.now();
+  frame.onload = () => {
+    if (token !== launchToken) return;
+    const elapsed   = Date.now() - startTime;
+    const remaining = Math.max(0, 500 - elapsed);
+    loaderTimeout = setTimeout(() => {
+      if (token !== launchToken) return;
+      hideLoader();
+    }, remaining);
+  };
+  frame.srcdoc = tool.html;
+
+  activateTab(tool.id);
+}
+
+function closeTab(id) {
+  const idx = tabs.findIndex(t => t.id === id);
+  if (idx === -1) return;
+
+  const tab = tabs[idx];
+
+  // Invalidate any pending loader for this tab
+  launchToken++;
+  clearTimeout(loaderTimeout);
+  hideLoader();
+
+  // Remove DOM
+  tab.frameEl.remove();
+  tab.tabEl.remove();
+  tabs.splice(idx, 1);
+
+  if (tabs.length === 0) {
+    activeTabId = null;
+    closeTool();
+    return;
+  }
+
+  // Activate nearest tab
+  if (activeTabId === id) {
+    activeTabId = null;
+    const next = tabs[Math.min(idx, tabs.length - 1)];
+    activateTab(next.id);
+  }
+}
+
 async function launchTool(id) {
   try {
     const tool = await dbGet(id);
     if (!tool) return;
 
-    // Increment token — any prior pending load is now stale
-    const token = ++launchToken;
+    if (!viewer.classList.contains('active')) {
+      viewer.classList.add('active');
+      hub.classList.add('slide-out');
+      history.pushState({ toolOpen: true }, '');
+    }
 
-    // Clear any pending hide timer from a previous launch
-    clearTimeout(loaderTimeout);
-
-    // Show loader immediately before any async work
-    showLoader();
-
-    viewer.classList.add('active');
-    hub.classList.add('slide-out');
-    history.pushState({ toolOpen: true }, '');
-
-    const startTime = Date.now();
-
-    // Set onload before assigning srcdoc
-    toolFrame.onload = () => {
-      // Ignore stale load events
-      if (token !== launchToken) return;
-
-      const elapsed   = Date.now() - startTime;
-      const remaining = Math.max(0, 500 - elapsed);
-
-      loaderTimeout = setTimeout(() => {
-        if (token !== launchToken) return;
-        hideLoader();
-      }, remaining);
-    };
-
-    toolFrame.srcdoc = tool.html;
+    openTab(tool);
   } catch (err) {
     hideLoader();
     showToast('Could not open tool', 'error');
@@ -309,18 +430,11 @@ async function launchTool(id) {
 }
 
 function closeTool() {
-  // Invalidate any in-flight launch
-  launchToken++;
-  clearTimeout(loaderTimeout);
-  hideLoader();
-
   viewer.classList.remove('active');
   hub.classList.remove('slide-out');
-  toolFrame.onload  = null;
-  toolFrame.srcdoc  = '';
 }
 
-window.addEventListener('popstate', e => {
+window.addEventListener('popstate', () => {
   if (viewer.classList.contains('active')) {
     closeTool();
   }
@@ -486,7 +600,7 @@ function openToolMenu(id, anchor) {
 
   // position near anchor
   const rect = anchor.getBoundingClientRect();
-  const menuW = 210, menuH = 234;
+  const menuW = 210, menuH = 190;
   let top  = rect.bottom + 4;
   let left = rect.left - menuW + rect.width;
   if (top + menuH > window.innerHeight - 12) top = rect.top - menuH - 4;
@@ -499,35 +613,6 @@ function closeToolMenu() {
   toolMenuOverlay.classList.add('hidden');
 }
 toolMenuOverlay.addEventListener('click', closeToolMenu);
-
-// ── OPEN IN NEW TAB ───────────────────────────────────────────
-async function openToolInNewTab(id) {
-  try {
-    const tool = await dbGet(id);
-    if (!tool) return;
-    const blob = new Blob([tool.html], { type: 'text/html' });
-    const url  = URL.createObjectURL(blob);
-    const tab  = window.open(url, '_blank');
-    // Revoke the object URL once the new tab has had time to load
-    if (tab) {
-      const revoke = () => URL.revokeObjectURL(url);
-      tab.addEventListener('load', revoke, { once: true });
-      // Fallback: revoke after 30 s in case the load event is not catchable
-      setTimeout(revoke, 30000);
-    } else {
-      // window.open was blocked; revoke immediately
-      URL.revokeObjectURL(url);
-      showToast('Pop-up blocked — allow pop-ups and try again', 'error', 4000);
-    }
-  } catch (err) {
-    showToast('Could not open tool', 'error');
-  }
-}
-
-ctxOpenTab.addEventListener('click', () => {
-  closeToolMenu();
-  openToolInNewTab(activeToolId);
-});
 
 ctxRename.addEventListener('click', () => {
   closeToolMenu();
