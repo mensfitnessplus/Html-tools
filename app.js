@@ -468,6 +468,50 @@ function launchSingle(tool) {
   frame.srcdoc = tool.html;
 }
 
+// single-mode active frame ref + its baseline history length
+let singleFrame        = null;
+let singleFrameBaseLen = 1;
+
+function launchSingle(tool) {
+  // Remove any existing single-mode iframe
+  if (singleFrame) {
+    singleFrame.remove();
+    singleFrame = null;
+    singleFrameBaseLen = 1;
+  }
+
+  const token = ++launchToken;
+  clearTimeout(loaderTimeout);
+  showLoader();
+
+  const frame = document.createElement('iframe');
+  frame.className = 'tool-frame active';
+  frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads');
+  frame.setAttribute('allow', 'clipboard-read; clipboard-write');
+  frameContainer.appendChild(frame);
+  singleFrame = frame;
+
+  const startTime = Date.now();
+  frame.onload = () => {
+    if (token !== launchToken) return;
+
+    // Record baseline on first load so we can detect internal navigation later
+    try {
+      singleFrameBaseLen = frame.contentWindow.history.length;
+    } catch (e) {
+      singleFrameBaseLen = 1;
+    }
+
+    const elapsed   = Date.now() - startTime;
+    const remaining = Math.max(0, 500 - elapsed);
+    loaderTimeout = setTimeout(() => {
+      if (token !== launchToken) return;
+      hideLoader();
+    }, remaining);
+  };
+  frame.srcdoc = tool.html;
+}
+
 function closeTool() {
   launchToken++;
   clearTimeout(loaderTimeout);
@@ -475,14 +519,29 @@ function closeTool() {
   viewer.classList.remove('active');
   hub.classList.remove('slide-out');
   if (!tabsEnabled) {
-    frameContainer.querySelectorAll('.tool-frame').forEach(f => f.remove());
+    if (singleFrame) { singleFrame.remove(); singleFrame = null; }
+    singleFrameBaseLen = 1;
   }
 }
 
 window.addEventListener('popstate', () => {
-  if (viewer.classList.contains('active')) {
-    closeTool();
+  if (!viewer.classList.contains('active')) return;
+
+  // Single-mode: try to navigate the iframe back before closing
+  if (!tabsEnabled && singleFrame) {
+    let currentLen = 1;
+    try { currentLen = singleFrame.contentWindow.history.length; } catch (e) { /* cross-origin fallback */ }
+
+    if (currentLen > singleFrameBaseLen) {
+      // Iframe has internal history — go back inside it and re-push our own state
+      // so the next back press is caught again
+      singleFrame.contentWindow.history.back();
+      history.pushState({ toolOpen: true }, '');
+      return;
+    }
   }
+
+  closeTool();
 });
 
 // ── ADD TOOL SHEET ────────────────────────────────────────────
@@ -659,7 +718,7 @@ tabsToggleBtn.addEventListener('click', () => {
     // Switching ON → restore tab mode
     viewer.classList.remove('single-mode');
     // Remove any single-mode iframe
-    frameContainer.querySelectorAll('.tool-frame').forEach(f => f.remove());
+    if (singleFrame) { singleFrame.remove(); singleFrame = null; singleFrameBaseLen = 1; }
   }
 });
 
