@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
    Tool Hub — app.js
    IndexedDB + full CRUD + export/import + PWA service worker reg
-   (Includes Optional URL Tools Support Layer)
+   (Includes Optional URL Tools Support Layer & Drag-and-Drop)
 ═══════════════════════════════════════════════════════════════ */
 
 'use strict';
@@ -181,6 +181,8 @@ async function init() {
   try {
     db = await openDB();
     allTools = await dbGetAll();
+    // Sort primarily by user's dragged order, fallback to creation time
+    allTools.sort((a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt));
     renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
   } catch (err) {
     console.error('DB open failed:', err);
@@ -198,7 +200,6 @@ function applyUrlSupportState() {
     currentFilter = 'all';
     filterLabel.textContent = 'All';
   }
-  // If initialized, re-render tools with current state applied
   if (allTools.length) renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
 }
 
@@ -210,11 +211,22 @@ function renderGrid(tools) {
   emptyState.classList.toggle('hidden', allTools.length > 0 || query.length > 0 || currentFilter !== 'all');
   noResults.classList.toggle('hidden',  !(tools.length === 0 && (query.length > 0 || currentFilter !== 'all')));
 
+  // We only enable drag-and-drop if we are viewing the default 'all' list
+  const isDraggable = (query === '' && currentFilter === 'all');
+
   tools.forEach((tool, i) => {
     const card = document.createElement('div');
     card.className = 'tool-card';
     card.dataset.id = tool.id;
     card.style.animationDelay = `${i * 30}ms`;
+
+    if (isDraggable) {
+      card.draggable = true;
+      card.addEventListener('dragstart', handleDragStart);
+      card.addEventListener('dragend', handleDragEnd);
+      card.addEventListener('dragover', handleDragOver);
+      card.addEventListener('drop', handleDrop);
+    }
 
     // icon
     const iconWrap = document.createElement('div');
@@ -259,6 +271,72 @@ function renderGrid(tools) {
     toolGrid.appendChild(card);
   });
 }
+
+// ── DRAG AND DROP REORDERING ─────────────────────────────────
+let dragSourceCard = null;
+
+function handleDragStart(e) {
+  dragSourceCard = this;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', this.dataset.id);
+  // Add class slightly later to allow standard ghost image creation
+  setTimeout(() => this.classList.add('dragging'), 0);
+}
+
+function handleDragEnd(e) {
+  this.classList.remove('dragging');
+  dragSourceCard = null;
+  saveNewOrder(); 
+}
+
+function handleDragOver(e) {
+  e.preventDefault(); 
+  e.dataTransfer.dropEffect = 'move';
+
+  const targetCard = e.target.closest('.tool-card');
+  if (targetCard && targetCard !== dragSourceCard && targetCard.classList.contains('tool-card')) {
+    const rect = targetCard.getBoundingClientRect();
+    const offset = e.clientX - rect.left;
+    if (offset < rect.width / 2) {
+      toolGrid.insertBefore(dragSourceCard, targetCard);
+    } else {
+      toolGrid.insertBefore(dragSourceCard, targetCard.nextSibling);
+    }
+  }
+}
+
+function handleDrop(e) {
+  e.stopPropagation();
+  e.preventDefault();
+}
+
+async function saveNewOrder() {
+  const cards = Array.from(toolGrid.querySelectorAll('.tool-card'));
+  if (!cards.length) return;
+
+  const newOrderIds = cards.map(c => c.dataset.id);
+
+  // Safety check: ensure we aren't saving a partial filtered view
+  const q = searchInput.value.trim().toLowerCase();
+  if (q !== '' || currentFilter !== 'all') return;
+
+  const toolMap = new Map(allTools.map(t => [t.id, t]));
+  allTools = newOrderIds.map((id, index) => {
+    const t = toolMap.get(id);
+    if (t) {
+      t.order = index;
+      return t;
+    }
+    return null;
+  }).filter(Boolean);
+
+  // Save the new order background task
+  for (const tool of allTools) {
+    dbPut(tool).catch(err => console.error(err));
+  }
+}
+
+// ── END D&D ──────────────────────────────────────────────────
 
 function defaultIconSVG() {
   const ns = 'http://www.w3.org/2000/svg';
@@ -685,7 +763,8 @@ saveToolBtn.addEventListener('click', async () => {
       type:      type,
       html:      finalHtml,
       url:       finalUrl,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      order:     allTools.length // place at the end by default
     };
 
     try {
@@ -987,7 +1066,12 @@ importInput.addEventListener('change', () => {
         else allTools.push(entry);
         imported++;
       }
-      allTools.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      
+      // Keep proper ordering format on imported tools
+      allTools.sort((a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt));
+      allTools.forEach((t, i) => t.order = i); // lock the new order
+      for(let t of allTools) await dbPut(t);   // update DB order
+
       renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
       showToast(`Imported ${imported} tool${imported === 1 ? '' : 's'}`, 'success');
     } catch (err) {

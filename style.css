@@ -152,7 +152,7 @@ html, body {
   gap: 10px;
   cursor: pointer;
   position: relative;
-  transition: transform .18s ease, border-color .18s, box-shadow .18s;
+  transition: transform .18s ease, border-color .18s, box-shadow .18s, opacity .18s;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
   animation: cardIn .3s ease both;
@@ -167,6 +167,15 @@ html, body {
   box-shadow: 0 4px 20px #00000060;
 }
 
+/* Dragging visual states */
+.tool-card.dragging {
+  opacity: 0.5;
+  transform: scale(0.95);
+  box-shadow: none;
+  border: 1.5px dashed var(--accent);
+  z-index: 10;
+}
+
 .tool-icon-wrap {
   width: 58px; height: 58px;
   border-radius: var(--radius-m);
@@ -177,6 +186,7 @@ html, body {
   justify-content: center;
   overflow: hidden;
   flex-shrink: 0;
+  pointer-events: none; /* helps drag UX */
 }
 .tool-icon-img {
   width: 100%; height: 100%;
@@ -199,10 +209,12 @@ html, body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  pointer-events: none; /* helps drag UX */
 }
 .tool-date {
   font-size: .7rem;
   color: var(--text-3);
+  pointer-events: none; /* helps drag UX */
 }
 .card-menu-btn {
   position: absolute;
@@ -219,8 +231,9 @@ html, body {
   opacity: 0;
   transition: opacity .15s, background .15s;
   -webkit-tap-highlight-color: transparent;
+  z-index: 2;
 }
-.card-menu-btn svg { width: 14px; height: 14px; }
+.card-menu-btn svg { width: 14px; height: 14px; pointer-events: none; }
 .tool-card:hover  .card-menu-btn,
 .tool-card:active .card-menu-btn { opacity: 1; }
 /* Always show on touch devices */
@@ -287,8 +300,8 @@ html, body {
 .tab-bar {
   flex-shrink: 0;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding-top: env(safe-area-inset-top, 0px);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 5;
 }
 .tab-list {
@@ -298,7 +311,7 @@ html, body {
   scrollbar-width: none;
   -ms-overflow-style: none;
   gap: 2px;
-  padding: 6px 6px 0;
+  padding: 0 6px 6px;
   min-height: 42px;
 }
 .tab-list::-webkit-scrollbar { display: none; }
@@ -308,9 +321,9 @@ html, body {
   align-items: center;
   gap: 6px;
   padding: 6px 10px 7px;
-  border-radius: var(--radius-s) var(--radius-s) 0 0;
+  border-radius: 0 0 var(--radius-s) var(--radius-s);
   border: 1.5px solid transparent;
-  border-bottom: none;
+  border-top: none;
   background: transparent;
   color: var(--text-2);
   font-size: .82rem;
