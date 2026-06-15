@@ -422,6 +422,7 @@ function hideLoader() {
 // ── TAB MANAGER ───────────────────────────────────────────────
 const tabs = [];
 let activeTabId = null;
+let dragSourceTab = null;
 let launchToken = 0;
 let loaderTimeout = null;
 
@@ -431,6 +432,13 @@ function renderTab(tab, isActive) {
   const el = document.createElement('button');
   el.className = 'tab' + (isActive ? ' active' : '');
   el.dataset.tabId = tab.id;
+
+  // Make it draggable
+  el.draggable = true;
+  el.addEventListener('dragstart', handleTabDragStart);
+  el.addEventListener('dragend', handleTabDragEnd);
+  el.addEventListener('dragover', handleTabDragOver);
+  el.addEventListener('drop', handleTabDrop);
 
   if (tab.icon) {
     const img = document.createElement('img');
@@ -461,6 +469,57 @@ function renderTab(tab, isActive) {
 
   el.addEventListener('click', () => activateTab(tab.id));
   return el;
+}
+
+// ── TAB DRAG AND DROP HANDLERS ──
+
+function handleTabDragStart(e) {
+  dragSourceTab = this;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', this.dataset.tabId);
+  setTimeout(() => this.classList.add('dragging'), 0);
+}
+
+function handleTabDragEnd(e) {
+  this.classList.remove('dragging');
+  dragSourceTab = null;
+  updateTabsArrayOrder();
+}
+
+function handleTabDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+
+  const targetTab = e.target.closest('.tab');
+  if (targetTab && targetTab !== dragSourceTab) {
+    const rect = targetTab.getBoundingClientRect();
+    const offset = e.clientX - rect.left;
+    if (offset < rect.width / 2) {
+      tabList.insertBefore(dragSourceTab, targetTab);
+    } else {
+      tabList.insertBefore(dragSourceTab, targetTab.nextSibling);
+    }
+  }
+}
+
+function handleTabDrop(e) {
+  e.stopPropagation();
+  e.preventDefault();
+}
+
+// Sync the DOM order back to the active tabs array
+function updateTabsArrayOrder() {
+  const tabElements = Array.from(tabList.querySelectorAll('.tab'));
+  const newOrderIds = tabElements.map(el => el.dataset.tabId);
+
+  const tabMap = new Map(tabs.map(t => [t.id, t]));
+
+  tabs.length = 0;
+  newOrderIds.forEach(id => {
+    if (tabMap.has(id)) {
+      tabs.push(tabMap.get(id));
+    }
+  });
 }
 
 function activateTab(id) {

@@ -345,6 +345,10 @@ html, body {
   color: var(--text);
   border-color: var(--border2);
 }
+.tab.dragging {
+  opacity: 0.5;
+  background: var(--surface3);
+}
 .tab-icon {
   width: 16px; height: 16px;
   border-radius: 3px;
