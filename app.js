@@ -120,6 +120,7 @@ const saveToolBtn    = document.getElementById('saveToolBtn');
 // context menu
 const toolMenu       = document.getElementById('toolMenu');
 const toolMenuOverlay= document.getElementById('toolMenuOverlay');
+const ctxOpenTab     = document.getElementById('ctxOpenTab');
 const ctxRename      = document.getElementById('ctxRename');
 const ctxUpdateHtml  = document.getElementById('ctxUpdateHtml');
 const ctxChangeIcon  = document.getElementById('ctxChangeIcon');
@@ -485,7 +486,7 @@ function openToolMenu(id, anchor) {
 
   // position near anchor
   const rect = anchor.getBoundingClientRect();
-  const menuW = 210, menuH = 190;
+  const menuW = 210, menuH = 234;
   let top  = rect.bottom + 4;
   let left = rect.left - menuW + rect.width;
   if (top + menuH > window.innerHeight - 12) top = rect.top - menuH - 4;
@@ -498,6 +499,35 @@ function closeToolMenu() {
   toolMenuOverlay.classList.add('hidden');
 }
 toolMenuOverlay.addEventListener('click', closeToolMenu);
+
+// ── OPEN IN NEW TAB ───────────────────────────────────────────
+async function openToolInNewTab(id) {
+  try {
+    const tool = await dbGet(id);
+    if (!tool) return;
+    const blob = new Blob([tool.html], { type: 'text/html' });
+    const url  = URL.createObjectURL(blob);
+    const tab  = window.open(url, '_blank');
+    // Revoke the object URL once the new tab has had time to load
+    if (tab) {
+      const revoke = () => URL.revokeObjectURL(url);
+      tab.addEventListener('load', revoke, { once: true });
+      // Fallback: revoke after 30 s in case the load event is not catchable
+      setTimeout(revoke, 30000);
+    } else {
+      // window.open was blocked; revoke immediately
+      URL.revokeObjectURL(url);
+      showToast('Pop-up blocked — allow pop-ups and try again', 'error', 4000);
+    }
+  } catch (err) {
+    showToast('Could not open tool', 'error');
+  }
+}
+
+ctxOpenTab.addEventListener('click', () => {
+  closeToolMenu();
+  openToolInNewTab(activeToolId);
+});
 
 ctxRename.addEventListener('click', () => {
   closeToolMenu();
