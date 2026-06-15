@@ -384,6 +384,15 @@ html, body {
 }
 .tool-frame.active { display: block; }
 
+/* Single-tool mode — tab bar takes zero space */
+#viewer.single-mode .tab-bar {
+  display: none;
+}
+#viewer.single-mode .frame-container {
+  position: absolute;
+  inset: 0;
+}
+
 /* ── TOOL LOADER ─────────────────────────────────────────────── */
 .tool-loader {
   position: absolute;

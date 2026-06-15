@@ -428,11 +428,7 @@ async function launchTool(id) {
     if (tabsEnabled) {
       openTab(tool);
     } else {
-      // Single-tool mode: replace whatever is open
-      tabs.forEach(t => { t.frameEl.remove(); t.tabEl.remove(); });
-      tabs.length = 0;
-      activeTabId = null;
-      openTab(tool);
+      launchSingle(tool);
     }
   } catch (err) {
     hideLoader();
@@ -440,9 +436,42 @@ async function launchTool(id) {
   }
 }
 
+function launchSingle(tool) {
+  // Remove any existing single-mode iframe
+  frameContainer.querySelectorAll('.tool-frame').forEach(f => f.remove());
+
+  const token = ++launchToken;
+  clearTimeout(loaderTimeout);
+  showLoader();
+
+  const frame = document.createElement('iframe');
+  frame.className = 'tool-frame active';
+  frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads');
+  frame.setAttribute('allow', 'clipboard-read; clipboard-write');
+  frameContainer.appendChild(frame);
+
+  const startTime = Date.now();
+  frame.onload = () => {
+    if (token !== launchToken) return;
+    const elapsed   = Date.now() - startTime;
+    const remaining = Math.max(0, 500 - elapsed);
+    loaderTimeout = setTimeout(() => {
+      if (token !== launchToken) return;
+      hideLoader();
+    }, remaining);
+  };
+  frame.srcdoc = tool.html;
+}
+
 function closeTool() {
+  launchToken++;
+  clearTimeout(loaderTimeout);
+  hideLoader();
   viewer.classList.remove('active');
   hub.classList.remove('slide-out');
+  if (!tabsEnabled) {
+    frameContainer.querySelectorAll('.tool-frame').forEach(f => f.remove());
+  }
 }
 
 window.addEventListener('popstate', () => {
@@ -607,14 +636,24 @@ document.addEventListener('click', e => {
 tabsToggleBtn.addEventListener('click', () => {
   tabsEnabled = !tabsEnabled;
   tabsToggleLabel.textContent = `Multi-tab: ${tabsEnabled ? 'On' : 'Off'}`;
-  tabBar.classList.toggle('hidden', !tabsEnabled);
   closeMenu();
+
   if (!tabsEnabled) {
-    // Close all tabs silently — next tool launch will open fresh single-frame mode
+    // Switching OFF → single-mode
+    viewer.classList.add('single-mode');
+    // Destroy all open tabs and their iframes
     tabs.forEach(t => { t.frameEl.remove(); t.tabEl.remove(); });
     tabs.length = 0;
     activeTabId = null;
+    launchToken++;
+    clearTimeout(loaderTimeout);
+    hideLoader();
     if (viewer.classList.contains('active')) closeTool();
+  } else {
+    // Switching ON → restore tab mode
+    viewer.classList.remove('single-mode');
+    // Remove any single-mode iframe
+    frameContainer.querySelectorAll('.tool-frame').forEach(f => f.remove());
   }
 });
 
