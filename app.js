@@ -83,6 +83,7 @@ let allTools       = [];
 let activeToolId   = null;   // tool targeted by context menu
 let pendingNewIcon = null;   // base64 string for add/edit sheet
 let editMode       = false;  // sheet is in "edit" mode (update HTML)
+let tabsEnabled    = true;   // multi-tab mode toggle
 
 // ── DOM REFS ─────────────────────────────────────────────────
 const hub            = document.getElementById('hub');
@@ -101,6 +102,8 @@ const toolLoader     = document.getElementById('toolLoader');
 const menuBtn        = document.getElementById('menuBtn');
 const menuDropdown   = document.getElementById('menuDropdown');
 const menuOverlay    = document.getElementById('menuOverlay');
+const tabsToggleBtn  = document.getElementById('tabsToggleBtn');
+const tabsToggleLabel= document.getElementById('tabsToggleLabel');
 const exportBtn      = document.getElementById('exportBtn');
 const importBtn      = document.getElementById('importBtn');
 const importInput    = document.getElementById('importInput');
@@ -422,7 +425,15 @@ async function launchTool(id) {
       history.pushState({ toolOpen: true }, '');
     }
 
-    openTab(tool);
+    if (tabsEnabled) {
+      openTab(tool);
+    } else {
+      // Single-tool mode: replace whatever is open
+      tabs.forEach(t => { t.frameEl.remove(); t.tabEl.remove(); });
+      tabs.length = 0;
+      activeTabId = null;
+      openTab(tool);
+    }
   } catch (err) {
     hideLoader();
     showToast('Could not open tool', 'error');
@@ -590,6 +601,21 @@ function closeMenu() { menuDropdown.classList.add('hidden'); menuOverlay.classLi
 menuOverlay.addEventListener('click', closeMenu);
 document.addEventListener('click', e => {
   if (!menuDropdown.classList.contains('hidden') && !menuDropdown.contains(e.target)) closeMenu();
+});
+
+// ── MULTI-TAB TOGGLE ──────────────────────────────────────────
+tabsToggleBtn.addEventListener('click', () => {
+  tabsEnabled = !tabsEnabled;
+  tabsToggleLabel.textContent = `Multi-tab: ${tabsEnabled ? 'On' : 'Off'}`;
+  tabBar.classList.toggle('hidden', !tabsEnabled);
+  closeMenu();
+  if (!tabsEnabled) {
+    // Close all tabs silently — next tool launch will open fresh single-frame mode
+    tabs.forEach(t => { t.frameEl.remove(); t.tabEl.remove(); });
+    tabs.length = 0;
+    activeTabId = null;
+    if (viewer.classList.contains('active')) closeTool();
+  }
 });
 
 // ── TOOL CONTEXT MENU ─────────────────────────────────────────
