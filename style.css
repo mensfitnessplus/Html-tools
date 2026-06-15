@@ -84,7 +84,6 @@ html, body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
-.header-actions { display: flex; gap: 4px; }
 
 /* ── SEARCH ─────────────────────────────────────────────────── */
 .search-wrap {
@@ -757,3 +756,35 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* ── URL SUPPORT LAYER ──────────────────────────────────────── */
+
+/* Ensure utility class resolves cleanly */
+.hidden { display: none !important; }
+
+/* Filter Actions */
+.header-actions { display: flex; align-items: center; gap: 4px; }
+.filter-wrap { position: relative; }
+.filter-btn { width: auto; padding: 0 12px; border-radius: 50px; gap: 6px; }
+.filter-btn span { font-size: .85rem; font-weight: 600; }
+#filterDropdown { position: absolute; top: 46px; right: 0; min-width: 120px; z-index: 200; }
+
+/* Tool Type Radio Group */
+.type-radios { display: flex; gap: 16px; margin-top: 4px; margin-bottom: 8px; }
+.type-radios label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .9rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text-2);
+}
+.type-radios input {
+  cursor: pointer;
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+.type-radios span { transition: color .15s; }
+.type-radios input:checked ~ span { color: var(--text); }

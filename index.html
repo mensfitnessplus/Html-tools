@@ -15,7 +15,6 @@
 </head>
 <body>
 
-  <!-- ── MAIN HUB ── -->
   <div id="hub" class="screen active">
 
     <header class="hub-header">
@@ -30,6 +29,17 @@
           <span class="brand-name">Tool Hub</span>
         </div>
         <div class="header-actions">
+          <div id="filterWrap" class="filter-wrap hidden">
+            <button class="icon-btn filter-btn" id="filterBtn" aria-label="Filter Tools">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              <span id="filterLabel">All</span>
+            </button>
+            <div id="filterDropdown" class="dropdown hidden">
+              <button class="dropdown-item" data-filter="all">All</button>
+              <button class="dropdown-item" data-filter="html">HTML</button>
+              <button class="dropdown-item" data-filter="url">URL</button>
+            </div>
+          </div>
           <button class="icon-btn" id="menuBtn" title="More options" aria-label="More options">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
@@ -62,7 +72,7 @@
           </svg>
         </div>
         <p class="empty-title">No tools yet</p>
-        <p class="empty-sub">Tap <strong>+</strong> to upload your first HTML tool</p>
+        <p class="empty-sub">Tap <strong>+</strong> to add your first tool</p>
       </div>
       <div id="noResults" class="empty-state hidden">
         <div class="empty-icon">
@@ -83,7 +93,6 @@
     </button>
   </div>
 
-  <!-- ── TOOL VIEWER ── -->
   <div id="viewer" class="screen">
     <div id="tabBar" class="tab-bar">
       <div id="tabList" class="tab-list"></div>
@@ -95,11 +104,15 @@
     <div id="frameContainer" class="frame-container"></div>
   </div>
 
-  <!-- ── DROPDOWN MENU ── -->
   <div id="menuDropdown" class="dropdown hidden">
     <button class="dropdown-item" id="tabsToggleBtn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M2 7h20"/><path d="M7 3v4"/></svg>
       <span id="tabsToggleLabel">Multi-tab: On</span>
+    </button>
+    <div class="context-divider"></div>
+    <button class="dropdown-item" id="urlSupportToggleBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      <span id="urlSupportToggleLabel">URL Support: Off</span>
     </button>
     <div class="context-divider"></div>
     <button class="dropdown-item" id="exportBtn">
@@ -113,24 +126,36 @@
   </div>
   <div id="menuOverlay" class="overlay hidden"></div>
 
-  <!-- ── ADD / EDIT TOOL SHEET ── -->
   <div id="addSheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
     <div class="sheet-handle"></div>
     <div class="sheet-content">
       <h2 class="sheet-title" id="sheetTitle">Add Tool</h2>
+
+      <div class="field-group hidden" id="toolTypeGroup">
+        <label class="field-label">Tool Type</label>
+        <div class="type-radios">
+          <label><input type="radio" name="toolType" value="html" checked> <span>HTML</span></label>
+          <label><input type="radio" name="toolType" value="url"> <span>URL</span></label>
+        </div>
+      </div>
 
       <div class="field-group">
         <label class="field-label">Name</label>
         <input type="text" id="toolNameInput" class="field-input" placeholder="My Awesome Tool" maxlength="60" />
       </div>
 
-      <div class="field-group">
+      <div class="field-group" id="htmlFileGroup">
         <label class="field-label">HTML File <span class="required" id="htmlRequired">*</span></label>
         <label class="file-pick" id="htmlPickLabel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <span id="htmlPickText">Choose .html file</span>
           <input type="file" id="htmlFileInput" accept=".html,text/html" hidden />
         </label>
+      </div>
+
+      <div class="field-group hidden" id="urlInputGroup">
+        <label class="field-label">URL <span class="required">*</span></label>
+        <input type="url" id="urlInput" class="field-input" placeholder="https://example.com" />
       </div>
 
       <div class="field-group">
@@ -159,7 +184,6 @@
   </div>
   <div id="sheetOverlay" class="overlay hidden"></div>
 
-  <!-- ── TOOL CONTEXT MENU ── -->
   <div id="toolMenu" class="context-menu hidden" role="menu">
     <button class="context-item" id="ctxRename" role="menuitem">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -168,6 +192,10 @@
     <button class="context-item" id="ctxUpdateHtml" role="menuitem">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-5.1L1 10"/></svg>
       Update HTML
+    </button>
+    <button class="context-item hidden" id="ctxUpdateUrl" role="menuitem">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      Update URL
     </button>
     <button class="context-item" id="ctxChangeIcon" role="menuitem">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -181,7 +209,6 @@
   </div>
   <div id="toolMenuOverlay" class="overlay hidden"></div>
 
-  <!-- ── RENAME DIALOG ── -->
   <div id="renameDialog" class="dialog-wrap hidden" role="dialog" aria-modal="true">
     <div class="dialog">
       <h3 class="dialog-title">Rename Tool</h3>
@@ -193,7 +220,17 @@
     </div>
   </div>
 
-  <!-- ── DELETE CONFIRM DIALOG ── -->
+  <div id="updateUrlDialog" class="dialog-wrap hidden" role="dialog" aria-modal="true">
+    <div class="dialog">
+      <h3 class="dialog-title">Update URL</h3>
+      <input type="url" id="updateUrlInput" class="field-input" placeholder="https://example.com" />
+      <div class="dialog-actions">
+        <button class="btn-secondary" id="cancelUpdateUrlBtn">Cancel</button>
+        <button class="btn-primary" id="confirmUpdateUrlBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
   <div id="deleteDialog" class="dialog-wrap hidden" role="dialog" aria-modal="true">
     <div class="dialog">
       <h3 class="dialog-title">Delete Tool?</h3>
@@ -205,10 +242,8 @@
     </div>
   </div>
 
-  <!-- ── TOAST ── -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <!-- hidden file inputs for update / icon change / import -->
   <input type="file" id="updateHtmlInput" accept=".html,text/html" hidden />
   <input type="file" id="changeIconInput" accept="image/png,image/jpeg,image/webp" hidden />
   <input type="file" id="importInput" accept=".json,application/json" hidden />

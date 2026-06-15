@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
    Tool Hub — app.js
    IndexedDB + full CRUD + export/import + PWA service worker reg
+   (Includes Optional URL Tools Support Layer)
 ═══════════════════════════════════════════════════════════════ */
 
 'use strict';
@@ -82,8 +83,12 @@ function dbDelete(id) {
 let allTools       = [];
 let activeToolId   = null;   // tool targeted by context menu
 let pendingNewIcon = null;   // base64 string for add/edit sheet
+let pendingHtmlContent = null;
 let editMode       = false;  // sheet is in "edit" mode (update HTML)
-let tabsEnabled    = localStorage.getItem('tabsEnabled') !== 'false';   // multi-tab mode toggle
+
+let tabsEnabled       = localStorage.getItem('tabsEnabled') !== 'false';   // multi-tab mode toggle
+let urlSupportEnabled = localStorage.getItem('urlSupportEnabled') === 'true'; // URL support toggle
+let currentFilter     = 'all'; // filter mode: 'all', 'html', 'url'
 
 // ── DOM REFS ─────────────────────────────────────────────────
 const hub            = document.getElementById('hub');
@@ -98,67 +103,103 @@ const tabBar         = document.getElementById('tabBar');
 const tabList        = document.getElementById('tabList');
 const frameContainer = document.getElementById('frameContainer');
 const toolLoader     = document.getElementById('toolLoader');
-// menu
+
+// header & menu
+const filterWrap     = document.getElementById('filterWrap');
+const filterBtn      = document.getElementById('filterBtn');
+const filterLabel    = document.getElementById('filterLabel');
+const filterDropdown = document.getElementById('filterDropdown');
 const menuBtn        = document.getElementById('menuBtn');
 const menuDropdown   = document.getElementById('menuDropdown');
 const menuOverlay    = document.getElementById('menuOverlay');
 const tabsToggleBtn  = document.getElementById('tabsToggleBtn');
 const tabsToggleLabel= document.getElementById('tabsToggleLabel');
+const urlSupportToggleBtn   = document.getElementById('urlSupportToggleBtn');
+const urlSupportToggleLabel = document.getElementById('urlSupportToggleLabel');
 const exportBtn      = document.getElementById('exportBtn');
 const importBtn      = document.getElementById('importBtn');
 const importInput    = document.getElementById('importInput');
+
 // sheet
 const addSheet       = document.getElementById('addSheet');
 const sheetOverlay   = document.getElementById('sheetOverlay');
 const sheetTitle     = document.getElementById('sheetTitle');
+const toolTypeGroup  = document.getElementById('toolTypeGroup');
+const htmlFileGroup  = document.getElementById('htmlFileGroup');
+const urlInputGroup  = document.getElementById('urlInputGroup');
 const toolNameInput  = document.getElementById('toolNameInput');
 const htmlPickLabel  = document.getElementById('htmlPickLabel');
 const htmlPickText   = document.getElementById('htmlPickText');
 const htmlFileInput  = document.getElementById('htmlFileInput');
 const htmlRequired   = document.getElementById('htmlRequired');
+const urlInput       = document.getElementById('urlInput');
 const iconFileInput  = document.getElementById('iconFileInput');
 const iconPreview    = document.getElementById('iconPreview');
 const iconPlaceholder= document.getElementById('iconPlaceholder');
 const clearIconBtn   = document.getElementById('clearIconBtn');
 const cancelSheetBtn = document.getElementById('cancelSheetBtn');
 const saveToolBtn    = document.getElementById('saveToolBtn');
+
 // context menu
 const toolMenu       = document.getElementById('toolMenu');
 const toolMenuOverlay= document.getElementById('toolMenuOverlay');
 const ctxRename      = document.getElementById('ctxRename');
 const ctxUpdateHtml  = document.getElementById('ctxUpdateHtml');
+const ctxUpdateUrl   = document.getElementById('ctxUpdateUrl');
 const ctxChangeIcon  = document.getElementById('ctxChangeIcon');
 const ctxDelete      = document.getElementById('ctxDelete');
+
 // dialogs
 const renameDialog   = document.getElementById('renameDialog');
 const renameInput    = document.getElementById('renameInput');
 const cancelRenameBtn= document.getElementById('cancelRenameBtn');
 const confirmRenameBtn=document.getElementById('confirmRenameBtn');
+
+const updateUrlDialog     = document.getElementById('updateUrlDialog');
+const updateUrlInput      = document.getElementById('updateUrlInput');
+const cancelUpdateUrlBtn  = document.getElementById('cancelUpdateUrlBtn');
+const confirmUpdateUrlBtn = document.getElementById('confirmUpdateUrlBtn');
+
 const deleteDialog   = document.getElementById('deleteDialog');
 const deleteDialogBody=document.getElementById('deleteDialogBody');
 const cancelDeleteBtn= document.getElementById('cancelDeleteBtn');
 const confirmDeleteBtn=document.getElementById('confirmDeleteBtn');
-// hidden inputs for context actions
+
+// hidden inputs
 const updateHtmlInput= document.getElementById('updateHtmlInput');
 const changeIconInput= document.getElementById('changeIconInput');
-// toast
 const toast          = document.getElementById('toast');
 
 // ── INIT ─────────────────────────────────────────────────────
 async function init() {
-  // Apply persisted multi-tab setting
   if (!tabsEnabled) {
     viewer.classList.add('single-mode');
     tabsToggleLabel.textContent = 'Multi-tab: Off';
   }
+  applyUrlSupportState();
+
   try {
     db = await openDB();
     allTools = await dbGetAll();
-    renderGrid(allTools);
+    renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
   } catch (err) {
     console.error('DB open failed:', err);
     showToast('Could not open storage', 'error');
   }
+}
+
+// Apply URL Support Toggle Changes Visually
+function applyUrlSupportState() {
+  urlSupportToggleLabel.textContent = `URL Support: ${urlSupportEnabled ? 'On' : 'Off'}`;
+  if (urlSupportEnabled) {
+    filterWrap.classList.remove('hidden');
+  } else {
+    filterWrap.classList.add('hidden');
+    currentFilter = 'all';
+    filterLabel.textContent = 'All';
+  }
+  // If initialized, re-render tools with current state applied
+  if (allTools.length) renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
 }
 
 // ── RENDERING ────────────────────────────────────────────────
@@ -166,8 +207,8 @@ function renderGrid(tools) {
   toolGrid.innerHTML = '';
   const query = searchInput.value.trim().toLowerCase();
 
-  emptyState.classList.toggle('hidden', allTools.length > 0 || query.length > 0);
-  noResults.classList.toggle('hidden',  !(tools.length === 0 && query.length > 0));
+  emptyState.classList.toggle('hidden', allTools.length > 0 || query.length > 0 || currentFilter !== 'all');
+  noResults.classList.toggle('hidden',  !(tools.length === 0 && (query.length > 0 || currentFilter !== 'all')));
 
   tools.forEach((tool, i) => {
     const card = document.createElement('div');
@@ -244,21 +285,50 @@ function formatDate(ts) {
 }
 
 function filterTools(query) {
-  if (!query) return allTools;
-  return allTools.filter(t => t.name.toLowerCase().includes(query));
+  let list = allTools;
+  // Apply URL / HTML Type Filter
+  if (urlSupportEnabled && currentFilter !== 'all') {
+    list = list.filter(t => {
+      const type = t.type === 'url' ? 'url' : 'html';
+      return type === currentFilter;
+    });
+  }
+  // Apply Search
+  if (query) {
+    list = list.filter(t => t.name.toLowerCase().includes(query));
+  }
+  return list;
 }
 
-// ── SEARCH ───────────────────────────────────────────────────
+// ── SEARCH & FILTER HEADER ───────────────────────────────────
 searchInput.addEventListener('input', () => {
   const q = searchInput.value.trim().toLowerCase();
   searchClear.classList.toggle('visible', q.length > 0);
   renderGrid(filterTools(q));
 });
+
 searchClear.addEventListener('click', () => {
   searchInput.value = '';
   searchClear.classList.remove('visible');
-  renderGrid(allTools);
+  renderGrid(filterTools(''));
   searchInput.focus();
+});
+
+filterBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  const open = !filterDropdown.classList.contains('hidden');
+  if (open) { filterDropdown.classList.add('hidden'); }
+  else      { filterDropdown.classList.remove('hidden'); }
+  if (!menuDropdown.classList.contains('hidden')) closeMenu();
+});
+
+filterDropdown.addEventListener('click', e => {
+  const btn = e.target.closest('.dropdown-item');
+  if (!btn) return;
+  currentFilter = btn.dataset.filter;
+  filterLabel.textContent = btn.textContent;
+  filterDropdown.classList.add('hidden');
+  renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
 });
 
 // ── LOADER ───────────────────────────────────────────────────
@@ -272,7 +342,6 @@ function hideLoader() {
 }
 
 // ── TAB MANAGER ───────────────────────────────────────────────
-// tabs: Array<{ id, name, icon, frameEl, tabEl }>
 const tabs = [];
 let activeTabId = null;
 let launchToken = 0;
@@ -285,7 +354,6 @@ function renderTab(tab, isActive) {
   el.className = 'tab' + (isActive ? ' active' : '');
   el.dataset.tabId = tab.id;
 
-  // icon
   if (tab.icon) {
     const img = document.createElement('img');
     img.className = 'tab-icon';
@@ -293,24 +361,16 @@ function renderTab(tab, isActive) {
     img.alt = '';
     el.appendChild(img);
   } else {
-    const ns = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('stroke-width', '2');
-    svg.classList.add('tab-icon-default');
-    svg.innerHTML = `<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>`;
+    const svg = defaultIconSVG();
+    svg.classList.replace('tool-icon-default', 'tab-icon-default');
     el.appendChild(svg);
   }
 
-  // name
   const nameEl = document.createElement('span');
   nameEl.className = 'tab-name';
   nameEl.textContent = tab.name;
   el.appendChild(nameEl);
 
-  // close btn
   const closeBtn = document.createElement('button');
   closeBtn.className = 'tab-close';
   closeBtn.setAttribute('aria-label', `Close ${tab.name}`);
@@ -327,8 +387,6 @@ function renderTab(tab, isActive) {
 
 function activateTab(id) {
   if (activeTabId === id) return;
-
-  // hide current active frame + deactivate tab el
   if (activeTabId) {
     const prev = tabById(activeTabId);
     if (prev) {
@@ -336,25 +394,18 @@ function activateTab(id) {
       prev.tabEl.classList.remove('active');
     }
   }
-
   activeTabId = id;
   const tab = tabById(id);
   if (!tab) return;
-
   tab.frameEl.classList.add('active');
   tab.tabEl.classList.add('active');
   tab.tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
 }
 
 function openTab(tool) {
-  // Already open? Just switch.
   const existing = tabById(tool.id);
-  if (existing) {
-    activateTab(tool.id);
-    return;
-  }
+  if (existing) { activateTab(tool.id); return; }
 
-  // Create iframe
   const frame = document.createElement('iframe');
   frame.className = 'tool-frame';
   frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads');
@@ -364,12 +415,10 @@ function openTab(tool) {
   const tab = { id: tool.id, name: tool.name, icon: tool.icon || null, frameEl: frame, tabEl: null };
   tabs.push(tab);
 
-  // Create tab element
   const tabEl = renderTab(tab, false);
   tab.tabEl = tabEl;
   tabList.appendChild(tabEl);
 
-  // Load tool with loader
   const token = ++launchToken;
   clearTimeout(loaderTimeout);
   showLoader();
@@ -384,7 +433,10 @@ function openTab(tool) {
       hideLoader();
     }, remaining);
   };
-  frame.srcdoc = tool.html;
+
+  const type = tool.type === 'url' ? 'url' : 'html';
+  if (type === 'url') frame.src = tool.url;
+  else frame.srcdoc = tool.html;
 
   activateTab(tool.id);
 }
@@ -394,13 +446,10 @@ function closeTab(id) {
   if (idx === -1) return;
 
   const tab = tabs[idx];
-
-  // Invalidate any pending loader for this tab
   launchToken++;
   clearTimeout(loaderTimeout);
   hideLoader();
 
-  // Remove DOM
   tab.frameEl.remove();
   tab.tabEl.remove();
   tabs.splice(idx, 1);
@@ -410,8 +459,6 @@ function closeTab(id) {
     closeTool();
     return;
   }
-
-  // Activate nearest tab
   if (activeTabId === id) {
     activeTabId = null;
     const next = tabs[Math.min(idx, tabs.length - 1)];
@@ -423,18 +470,13 @@ async function launchTool(id) {
   try {
     const tool = await dbGet(id);
     if (!tool) return;
-
     if (!viewer.classList.contains('active')) {
       viewer.classList.add('active');
       hub.classList.add('slide-out');
       history.pushState({ toolOpen: true }, '');
     }
-
-    if (tabsEnabled) {
-      openTab(tool);
-    } else {
-      launchSingle(tool);
-    }
+    if (tabsEnabled) openTab(tool);
+    else launchSingle(tool);
   } catch (err) {
     hideLoader();
     showToast('Could not open tool', 'error');
@@ -442,9 +484,7 @@ async function launchTool(id) {
 }
 
 function launchSingle(tool) {
-  // Remove any existing single-mode iframe
   frameContainer.querySelectorAll('.tool-frame').forEach(f => f.remove());
-
   const token = ++launchToken;
   clearTimeout(loaderTimeout);
   showLoader();
@@ -465,51 +505,10 @@ function launchSingle(tool) {
       hideLoader();
     }, remaining);
   };
-  frame.srcdoc = tool.html;
-}
 
-// single-mode active frame ref + its baseline history length
-let singleFrame        = null;
-let singleFrameBaseLen = 1;
-
-function launchSingle(tool) {
-  // Remove any existing single-mode iframe
-  if (singleFrame) {
-    singleFrame.remove();
-    singleFrame = null;
-    singleFrameBaseLen = 1;
-  }
-
-  const token = ++launchToken;
-  clearTimeout(loaderTimeout);
-  showLoader();
-
-  const frame = document.createElement('iframe');
-  frame.className = 'tool-frame active';
-  frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads');
-  frame.setAttribute('allow', 'clipboard-read; clipboard-write');
-  frameContainer.appendChild(frame);
-  singleFrame = frame;
-
-  const startTime = Date.now();
-  frame.onload = () => {
-    if (token !== launchToken) return;
-
-    // Record baseline on first load so we can detect internal navigation later
-    try {
-      singleFrameBaseLen = frame.contentWindow.history.length;
-    } catch (e) {
-      singleFrameBaseLen = 1;
-    }
-
-    const elapsed   = Date.now() - startTime;
-    const remaining = Math.max(0, 500 - elapsed);
-    loaderTimeout = setTimeout(() => {
-      if (token !== launchToken) return;
-      hideLoader();
-    }, remaining);
-  };
-  frame.srcdoc = tool.html;
+  const type = tool.type === 'url' ? 'url' : 'html';
+  if (type === 'url') frame.src = tool.url;
+  else frame.srcdoc = tool.html;
 }
 
 function closeTool() {
@@ -519,35 +518,28 @@ function closeTool() {
   viewer.classList.remove('active');
   hub.classList.remove('slide-out');
   if (!tabsEnabled) {
-    if (singleFrame) { singleFrame.remove(); singleFrame = null; }
-    singleFrameBaseLen = 1;
+    frameContainer.querySelectorAll('.tool-frame').forEach(f => f.remove());
   }
 }
 
 window.addEventListener('popstate', () => {
-  if (!viewer.classList.contains('active')) return;
-
-  // Single-mode: try to navigate the iframe back before closing
-  if (!tabsEnabled && singleFrame) {
-    let currentLen = 1;
-    try { currentLen = singleFrame.contentWindow.history.length; } catch (e) { /* cross-origin fallback */ }
-
-    if (currentLen > singleFrameBaseLen) {
-      // Iframe has internal history — go back inside it and re-push our own state
-      // so the next back press is caught again
-      singleFrame.contentWindow.history.back();
-      history.pushState({ toolOpen: true }, '');
-      return;
-    }
-  }
-
-  closeTool();
+  if (viewer.classList.contains('active')) closeTool();
 });
 
 // ── ADD TOOL SHEET ────────────────────────────────────────────
-let pendingHtmlContent = null;
-
 addBtn.addEventListener('click', () => openAddSheet());
+
+document.getElementsByName('toolType').forEach(radio => {
+  radio.addEventListener('change', e => {
+    if (e.target.value === 'url') {
+      htmlFileGroup.classList.add('hidden');
+      urlInputGroup.classList.remove('hidden');
+    } else {
+      htmlFileGroup.classList.remove('hidden');
+      urlInputGroup.classList.add('hidden');
+    }
+  });
+});
 
 function openAddSheet(mode = 'add', toolId = null) {
   editMode = mode !== 'add';
@@ -558,6 +550,7 @@ function openAddSheet(mode = 'add', toolId = null) {
   htmlFileInput.value = '';
   htmlPickText.textContent = 'Choose .html file';
   htmlPickLabel.classList.remove('has-file');
+  urlInput.value = '';
   pendingHtmlContent  = null;
   pendingNewIcon      = null;
   iconPreview.src     = '';
@@ -565,11 +558,18 @@ function openAddSheet(mode = 'add', toolId = null) {
   iconPlaceholder.style.display = 'flex';
   clearIconBtn.style.display    = 'none';
 
+  document.querySelector('input[name="toolType"][value="html"]').checked = true;
+
   if (editMode) {
     sheetTitle.textContent = 'Edit Tool';
     htmlRequired.style.display = 'none';
     saveToolBtn.textContent    = 'Save Changes';
-    // pre-fill name
+    
+    // Hide Type configuration & URL config entirely in edit mode
+    toolTypeGroup.classList.add('hidden');
+    urlInputGroup.classList.add('hidden');
+    htmlFileGroup.classList.add('hidden');
+
     dbGet(toolId).then(tool => {
       if (tool) {
         toolNameInput.value = tool.name;
@@ -580,12 +580,22 @@ function openAddSheet(mode = 'add', toolId = null) {
           clearIconBtn.style.display    = 'inline-flex';
           pendingNewIcon = tool.icon;
         }
+        const type = tool.type === 'url' ? 'url' : 'html';
+        if (type === 'html') {
+          htmlFileGroup.classList.remove('hidden'); // allow picking new HTML like original
+        }
       }
     });
   } else {
     sheetTitle.textContent = 'Add Tool';
     htmlRequired.style.display = 'inline';
     saveToolBtn.textContent    = 'Save Tool';
+
+    if (urlSupportEnabled) toolTypeGroup.classList.remove('hidden');
+    else toolTypeGroup.classList.add('hidden');
+
+    htmlFileGroup.classList.remove('hidden');
+    urlInputGroup.classList.add('hidden');
   }
 
   addSheet.classList.remove('hidden');
@@ -617,7 +627,7 @@ htmlFileInput.addEventListener('change', () => {
   reader.readAsText(file);
 });
 
-// Icon pick (in sheet)
+// Icon pick
 iconFileInput.addEventListener('change', () => {
   const file = iconFileInput.files[0];
   if (!file) return;
@@ -639,6 +649,14 @@ clearIconBtn.addEventListener('click', () => {
   iconFileInput.value = '';
 });
 
+// URL validation helper
+function isValidHttpUrl(string) {
+  try {
+    const u = new URL(string);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch (_) { return false; }
+}
+
 // Save
 saveToolBtn.addEventListener('click', async () => {
   const name = toolNameInput.value.trim();
@@ -646,14 +664,30 @@ saveToolBtn.addEventListener('click', async () => {
 
   if (!editMode) {
     // ADD
-    if (!pendingHtmlContent) { showToast('Please choose an HTML file', 'error'); return; }
+    const type = urlSupportEnabled ? document.querySelector('input[name="toolType"]:checked').value : 'html';
+    
+    let finalHtml = null;
+    let finalUrl  = null;
+
+    if (type === 'url') {
+      const urlVal = urlInput.value.trim();
+      if (!isValidHttpUrl(urlVal)) { showToast('Please enter a valid HTTP/HTTPS URL', 'error'); return; }
+      finalUrl = urlVal;
+    } else {
+      if (!pendingHtmlContent) { showToast('Please choose an HTML file', 'error'); return; }
+      finalHtml = pendingHtmlContent;
+    }
+
     const tool = {
       id:        crypto.randomUUID(),
       name,
       icon:      pendingNewIcon || null,
-      html:      pendingHtmlContent,
+      type:      type,
+      html:      finalHtml,
+      url:       finalUrl,
       createdAt: Date.now()
     };
+
     try {
       await dbPut(tool);
       allTools.push(tool);
@@ -664,13 +698,18 @@ saveToolBtn.addEventListener('click', async () => {
       showToast('Failed to save tool', 'error');
     }
   } else {
-    // EDIT (name + icon only — html updated separately)
+    // EDIT
     try {
       const tool = await dbGet(activeToolId);
       if (!tool) return;
       tool.name = name;
       tool.icon = pendingNewIcon;
-      if (pendingHtmlContent) tool.html = pendingHtmlContent;
+
+      const type = tool.type === 'url' ? 'url' : 'html';
+      if (type === 'html' && pendingHtmlContent) {
+        tool.html = pendingHtmlContent;
+      }
+      
       await dbPut(tool);
       const idx = allTools.findIndex(t => t.id === activeToolId);
       if (idx > -1) allTools[idx] = tool;
@@ -689,14 +728,16 @@ menuBtn.addEventListener('click', e => {
   const open = !menuDropdown.classList.contains('hidden');
   if (open) { closeMenu(); }
   else      { menuDropdown.classList.remove('hidden'); menuOverlay.classList.remove('hidden'); }
+  if (!filterDropdown.classList.contains('hidden')) filterDropdown.classList.add('hidden');
 });
 function closeMenu() { menuDropdown.classList.add('hidden'); menuOverlay.classList.add('hidden'); }
 menuOverlay.addEventListener('click', closeMenu);
 document.addEventListener('click', e => {
   if (!menuDropdown.classList.contains('hidden') && !menuDropdown.contains(e.target)) closeMenu();
+  if (!filterDropdown.classList.contains('hidden') && !filterWrap.contains(e.target)) filterDropdown.classList.add('hidden');
 });
 
-// ── MULTI-TAB TOGGLE ──────────────────────────────────────────
+// ── TOGGLES ───────────────────────────────────────────────────
 tabsToggleBtn.addEventListener('click', () => {
   tabsEnabled = !tabsEnabled;
   localStorage.setItem('tabsEnabled', tabsEnabled);
@@ -704,9 +745,7 @@ tabsToggleBtn.addEventListener('click', () => {
   closeMenu();
 
   if (!tabsEnabled) {
-    // Switching OFF → single-mode
     viewer.classList.add('single-mode');
-    // Destroy all open tabs and their iframes
     tabs.forEach(t => { t.frameEl.remove(); t.tabEl.remove(); });
     tabs.length = 0;
     activeTabId = null;
@@ -715,11 +754,16 @@ tabsToggleBtn.addEventListener('click', () => {
     hideLoader();
     if (viewer.classList.contains('active')) closeTool();
   } else {
-    // Switching ON → restore tab mode
     viewer.classList.remove('single-mode');
-    // Remove any single-mode iframe
-    if (singleFrame) { singleFrame.remove(); singleFrame = null; singleFrameBaseLen = 1; }
+    frameContainer.querySelectorAll('.tool-frame').forEach(f => f.remove());
   }
+});
+
+urlSupportToggleBtn.addEventListener('click', () => {
+  urlSupportEnabled = !urlSupportEnabled;
+  localStorage.setItem('urlSupportEnabled', urlSupportEnabled);
+  applyUrlSupportState();
+  closeMenu();
 });
 
 // ── TOOL CONTEXT MENU ─────────────────────────────────────────
@@ -727,6 +771,17 @@ function openToolMenu(id, anchor) {
   activeToolId = id;
   toolMenu.classList.remove('hidden');
   toolMenuOverlay.classList.remove('hidden');
+
+  const tool = allTools.find(t => t.id === id);
+  const type = (tool && tool.type === 'url') ? 'url' : 'html';
+
+  if (type === 'url') {
+    ctxUpdateHtml.classList.add('hidden');
+    ctxUpdateUrl.classList.remove('hidden');
+  } else {
+    ctxUpdateHtml.classList.remove('hidden');
+    ctxUpdateUrl.classList.add('hidden');
+  }
 
   // position near anchor
   const rect = anchor.getBoundingClientRect();
@@ -760,6 +815,16 @@ ctxUpdateHtml.addEventListener('click', () => {
   updateHtmlInput.click();
 });
 
+ctxUpdateUrl.addEventListener('click', () => {
+  closeToolMenu();
+  dbGet(activeToolId).then(tool => {
+    if (!tool) return;
+    updateUrlInput.value = tool.url || '';
+    updateUrlDialog.classList.remove('hidden');
+    setTimeout(() => { updateUrlInput.focus(); updateUrlInput.select(); }, 50);
+  });
+});
+
 ctxChangeIcon.addEventListener('click', () => {
   closeToolMenu();
   changeIconInput.value = '';
@@ -775,7 +840,7 @@ ctxDelete.addEventListener('click', () => {
   });
 });
 
-// ── UPDATE HTML ───────────────────────────────────────────────
+// ── UPDATE HTML / URL ─────────────────────────────────────────
 updateHtmlInput.addEventListener('change', () => {
   const file = updateHtmlInput.files[0];
   if (!file) return;
@@ -795,6 +860,27 @@ updateHtmlInput.addEventListener('change', () => {
   };
   reader.readAsText(file);
 });
+
+cancelUpdateUrlBtn.addEventListener('click', () => updateUrlDialog.classList.add('hidden'));
+confirmUpdateUrlBtn.addEventListener('click', doUpdateUrl);
+updateUrlInput.addEventListener('keydown', e => { if (e.key === 'Enter') doUpdateUrl(); });
+
+async function doUpdateUrl() {
+  const urlVal = updateUrlInput.value.trim();
+  if (!isValidHttpUrl(urlVal)) { showToast('Please enter a valid HTTP/HTTPS URL', 'error'); return; }
+  try {
+    const tool = await dbGet(activeToolId);
+    if (!tool) return;
+    tool.url = urlVal;
+    await dbPut(tool);
+    const idx = allTools.findIndex(t => t.id === activeToolId);
+    if (idx > -1) allTools[idx].url = urlVal;
+    updateUrlDialog.classList.add('hidden');
+    showToast(`URL updated`, 'success');
+  } catch (err) {
+    showToast('Update failed', 'error');
+  }
+}
 
 // ── CHANGE ICON ───────────────────────────────────────────────
 changeIconInput.addEventListener('change', () => {
@@ -886,17 +972,21 @@ importInput.addEventListener('change', () => {
       if (!Array.isArray(data.tools)) throw new Error('Invalid backup format');
       let imported = 0;
       for (const tool of data.tools) {
-        if (!tool.id || !tool.name || !tool.html) continue;
-        // Don't overwrite existing tools — give them a new id if collision
+        if (!tool.id || !tool.name) continue;
+
+        const type = tool.type === 'url' ? 'url' : 'html';
+        if (type === 'html' && !tool.html) continue;
+        if (type === 'url' && !tool.url) continue;
+
         const existing = await dbGet(tool.id).catch(() => null);
-        const entry = { ...tool, id: existing ? crypto.randomUUID() : tool.id };
+        const entry = { ...tool, id: existing ? crypto.randomUUID() : tool.id, type };
+
         await dbPut(entry);
         const idx = allTools.findIndex(t => t.id === entry.id);
         if (idx > -1) allTools[idx] = entry;
         else allTools.push(entry);
         imported++;
       }
-      // sort by createdAt
       allTools.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
       renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
       showToast(`Imported ${imported} tool${imported === 1 ? '' : 's'}`, 'success');
@@ -934,8 +1024,10 @@ document.addEventListener('keydown', e => {
       closeAddSheet();
       closeToolMenu();
       closeMenu();
+      if (!filterDropdown.classList.contains('hidden')) filterDropdown.classList.add('hidden');
       if (!deleteDialog.classList.contains('hidden')) deleteDialog.classList.add('hidden');
       if (!renameDialog.classList.contains('hidden')) renameDialog.classList.add('hidden');
+      if (!updateUrlDialog.classList.contains('hidden')) updateUrlDialog.classList.add('hidden');
     }
   }
 });
