@@ -83,7 +83,7 @@ let allTools       = [];
 let activeToolId   = null;   // tool targeted by context menu
 let pendingNewIcon = null;   // base64 string for add/edit sheet
 let editMode       = false;  // sheet is in "edit" mode (update HTML)
-let tabsEnabled    = true;   // multi-tab mode toggle
+let tabsEnabled    = localStorage.getItem('tabsEnabled') !== 'false';   // multi-tab mode toggle
 
 // ── DOM REFS ─────────────────────────────────────────────────
 const hub            = document.getElementById('hub');
@@ -146,6 +146,11 @@ const toast          = document.getElementById('toast');
 
 // ── INIT ─────────────────────────────────────────────────────
 async function init() {
+  // Apply persisted multi-tab setting
+  if (!tabsEnabled) {
+    viewer.classList.add('single-mode');
+    tabsToggleLabel.textContent = 'Multi-tab: Off';
+  }
   try {
     db = await openDB();
     allTools = await dbGetAll();
@@ -635,6 +640,7 @@ document.addEventListener('click', e => {
 // ── MULTI-TAB TOGGLE ──────────────────────────────────────────
 tabsToggleBtn.addEventListener('click', () => {
   tabsEnabled = !tabsEnabled;
+  localStorage.setItem('tabsEnabled', tabsEnabled);
   tabsToggleLabel.textContent = `Multi-tab: ${tabsEnabled ? 'On' : 'Off'}`;
   closeMenu();
 
