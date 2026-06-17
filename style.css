@@ -130,7 +130,7 @@ html, body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 16px 14px calc(96px + var(--safe-bottom));
+  padding: 16px 14px calc(140px + var(--safe-bottom));
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
@@ -156,6 +156,7 @@ html, body {
   user-select: none;
   -webkit-tap-highlight-color: transparent;
   animation: cardIn .3s ease both;
+  height: 100%;
 }
 @keyframes cardIn {
   from { opacity: 0; transform: scale(.9) translateY(8px); }
@@ -240,6 +241,51 @@ html, body {
 @media (hover: none) { .card-menu-btn { opacity: 1; } }
 .card-menu-btn:hover { background: var(--surface3); color: var(--text); }
 
+/* Bookmark Tags on Cards */
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 6px;
+}
+.card-tags span {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: .65rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* Pin Badge */
+.pin-badge {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  background: var(--accent);
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px var(--accent-glow);
+  z-index: 2;
+}
+.pin-badge svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+}
+
 /* ── FAB ────────────────────────────────────────────────────── */
 .fab {
   position: fixed;
@@ -262,6 +308,20 @@ html, body {
 .fab svg { width: 26px; height: 26px; }
 .fab:hover  { transform: scale(1.07); box-shadow: 0 6px 28px var(--accent-glow), 0 3px 10px #00000080; }
 .fab:active { transform: scale(.93); }
+
+.secondary-fab {
+  bottom: calc(96px + var(--safe-bottom));
+  background: var(--surface2);
+  color: var(--accent);
+  width: 50px;
+  height: 50px;
+  right: 24px;
+  border: 1.5px solid var(--border);
+  box-shadow: 0 4px 15px #00000050;
+}
+.secondary-fab svg { width: 22px; height: 22px; }
+.secondary-fab:hover { background: var(--surface3); }
+
 
 /* ── ICON BUTTON ────────────────────────────────────────────── */
 .icon-btn {
@@ -494,6 +554,7 @@ html, body {
   transition: background .15s;
   text-align: left;
 }
+.dropdown-item.active { background: var(--surface3); color: var(--accent); }
 .dropdown-item svg { width: 17px; height: 17px; color: var(--text-2); flex-shrink: 0; }
 .dropdown-item:hover { background: var(--surface3); }
 
@@ -546,6 +607,13 @@ html, body {
 }
 .required { color: var(--danger); }
 .optional  { color: var(--text-3); font-weight: 400; text-transform: none; font-size: .82rem; letter-spacing: 0; }
+
+.input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .field-input {
   width: 100%;
   background: var(--surface2);
@@ -554,7 +622,7 @@ html, body {
   color: var(--text);
   font-size: .95rem;
   font-family: var(--font);
-  padding: 12px 14px;
+  padding: 12px 34px 12px 14px;
   outline: none;
   transition: border-color .2s, box-shadow .2s;
 }
@@ -563,6 +631,23 @@ html, body {
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 .field-input::placeholder { color: var(--text-3); }
+
+.input-clear {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all .2s ease;
+}
+.input-clear:hover { background: var(--surface3); color: var(--text); }
+.input-clear svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.5; }
 
 /* ── FILE PICK ──────────────────────────────────────────────── */
 .file-pick {
@@ -784,7 +869,7 @@ html, body {
 .filter-wrap { position: relative; }
 .filter-btn { width: auto; padding: 0 12px; border-radius: 50px; gap: 6px; }
 .filter-btn span { font-size: .85rem; font-weight: 600; }
-#filterDropdown { position: absolute; top: 46px; right: 0; min-width: 120px; z-index: 200; }
+#filterDropdown, #sortDropdown { position: absolute; top: 46px; right: 0; min-width: 120px; z-index: 200; }
 
 /* Tool Type Radio Group */
 .type-radios { display: flex; gap: 16px; margin-top: 4px; margin-bottom: 8px; }

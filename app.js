@@ -81,15 +81,16 @@ function dbDelete(id) {
 
 // ── STATE ────────────────────────────────────────────────────
 let allTools       = [];
-let activeToolId   = null;   // tool targeted by context menu
-let pendingNewIcon = null;   // base64 string for add/edit sheet
+let activeToolId   = null;   
+let pendingNewIcon = null;   
 let pendingHtmlContent = null;
-let editMode       = false;  // sheet is in "edit" mode (update HTML)
+let editMode       = false;  
 
-let tabsEnabled       = localStorage.getItem('tabsEnabled') !== 'false';   // multi-tab mode toggle
-let urlSupportEnabled = localStorage.getItem('urlSupportEnabled') === 'true'; // URL support toggle
-let currentFilter     = 'all'; // filter mode: 'all', 'html', 'url'
-let viewMode          = localStorage.getItem('viewMode') || 'tools'; // 'tools' or 'bookmarks'
+let tabsEnabled       = localStorage.getItem('tabsEnabled') !== 'false';   
+let urlSupportEnabled = localStorage.getItem('urlSupportEnabled') === 'true'; 
+let currentFilter     = 'all'; 
+let viewMode          = localStorage.getItem('viewMode') || 'tools'; 
+let sortMode          = localStorage.getItem('sortMode') || 'manual';
 let activeTag         = null;
 
 // ── DOM REFS ─────────────────────────────────────────────────
@@ -101,6 +102,7 @@ const noResults      = document.getElementById('noResults');
 const searchInput    = document.getElementById('searchInput');
 const searchClear    = document.getElementById('searchClear');
 const addBtn         = document.getElementById('addBtn');
+const addUrlFab      = document.getElementById('addUrlFab');
 const tabBar         = document.getElementById('tabBar');
 const tabList        = document.getElementById('tabList');
 const frameContainer = document.getElementById('frameContainer');
@@ -111,6 +113,10 @@ const filterWrap       = document.getElementById('filterWrap');
 const filterBtn        = document.getElementById('filterBtn');
 const filterLabel      = document.getElementById('filterLabel');
 const filterDropdown   = document.getElementById('filterDropdown');
+const sortWrap         = document.getElementById('sortWrap');
+const sortBtn          = document.getElementById('sortBtn');
+const sortLabel        = document.getElementById('sortLabel');
+const sortDropdown     = document.getElementById('sortDropdown');
 const menuBtn          = document.getElementById('menuBtn');
 const menuDropdown     = document.getElementById('menuDropdown');
 const menuOverlay      = document.getElementById('menuOverlay');
@@ -139,11 +145,13 @@ const tagsGroup      = document.getElementById('tagsGroup');
 const tagsInput      = document.getElementById('tagsInput');
 const tagsSuggestionBox = document.getElementById('tagsSuggestionBox');
 const toolNameInput  = document.getElementById('toolNameInput');
+const toolNameClearBtn = document.getElementById('toolNameClearBtn');
 const htmlPickLabel  = document.getElementById('htmlPickLabel');
 const htmlPickText   = document.getElementById('htmlPickText');
 const htmlFileInput  = document.getElementById('htmlFileInput');
 const htmlRequired   = document.getElementById('htmlRequired');
 const urlInput       = document.getElementById('urlInput');
+const urlClearBtn    = document.getElementById('urlClearBtn');
 const iconFileInput  = document.getElementById('iconFileInput');
 const iconPreview    = document.getElementById('iconPreview');
 const iconPlaceholder= document.getElementById('iconPlaceholder');
@@ -159,6 +167,10 @@ const ctxRename      = document.getElementById('ctxRename');
 const ctxUpdateHtml  = document.getElementById('ctxUpdateHtml');
 const ctxUpdateUrl   = document.getElementById('ctxUpdateUrl');
 const ctxChangeIcon  = document.getElementById('ctxChangeIcon');
+const ctxPin         = document.getElementById('ctxPin');
+const ctxPinText     = document.getElementById('ctxPinText');
+const ctxCopyUrl     = document.getElementById('ctxCopyUrl');
+const ctxOpenExternal= document.getElementById('ctxOpenExternal');
 const ctxDelete      = document.getElementById('ctxDelete');
 
 // dialogs
@@ -184,16 +196,19 @@ async function init() {
     tabsToggleLabel.textContent = 'Multi-tab: Off';
   }
   
-  if (viewMode === 'bookmarks') {
-    viewBookmarksBtn.classList.add('active');
-  }
+  if (viewMode === 'bookmarks') viewBookmarksBtn.classList.add('active');
+  
+  // Set correct active state in sort dropdown
+  document.querySelectorAll('#sortDropdown .dropdown-item').forEach(btn => {
+    if (btn.dataset.sort === sortMode) btn.classList.add('active');
+    else btn.classList.remove('active');
+  });
+
   applyUrlSupportState();
 
   try {
     db = await openDB();
     allTools = await dbGetAll();
-    // Sort primarily by user's dragged order, fallback to creation time
-    allTools.sort((a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt));
     renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
   } catch (err) {
     console.error('DB open failed:', err);
@@ -204,13 +219,23 @@ async function init() {
 // Apply URL Support Toggle Changes Visually
 function applyUrlSupportState() {
   urlSupportToggleLabel.textContent = `URL Support: ${urlSupportEnabled ? 'On' : 'Off'}`;
-  if (urlSupportEnabled && viewMode !== 'bookmarks') {
-    filterWrap.classList.remove('hidden');
-  } else {
+  
+  if (viewMode === 'bookmarks') {
     filterWrap.classList.add('hidden');
-    currentFilter = 'all';
-    filterLabel.textContent = 'All';
+    sortWrap.classList.remove('hidden');
+    if (urlSupportEnabled) addUrlFab.classList.remove('hidden');
+    else addUrlFab.classList.add('hidden');
+  } else {
+    sortWrap.classList.add('hidden');
+    addUrlFab.classList.add('hidden');
+    if (urlSupportEnabled) filterWrap.classList.remove('hidden');
+    else {
+      filterWrap.classList.add('hidden');
+      currentFilter = 'all';
+      filterLabel.textContent = 'All';
+    }
   }
+
   if (allTools.length) renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
 }
 
@@ -220,14 +245,18 @@ function renderTags() {
     tagsWrap.classList.add('hidden');
     return;
   }
+  
   const allTags = new Set();
+  let hasUntagged = false;
+
   allTools.forEach(t => {
-    if (t.isBookmark && t.tags) {
-      t.tags.forEach(tag => allTags.add(tag));
+    if (t.isBookmark) {
+      if (!t.tags || t.tags.length === 0) hasUntagged = true;
+      else t.tags.forEach(tag => allTags.add(tag));
     }
   });
   
-  if (allTags.size === 0) {
+  if (allTags.size === 0 && !hasUntagged) {
     tagsWrap.classList.add('hidden');
     return;
   }
@@ -243,6 +272,17 @@ function renderTags() {
     renderGrid(filterTools(searchInput.value.trim().toLowerCase())); 
   });
   tagsWrap.appendChild(allBtn);
+
+  if (hasUntagged) {
+    const untaggedBtn = document.createElement('button');
+    untaggedBtn.className = `tag-chip ${activeTag === 'Untagged' ? 'active' : ''}`;
+    untaggedBtn.textContent = 'Untagged';
+    untaggedBtn.addEventListener('click', () => { 
+      activeTag = 'Untagged'; 
+      renderGrid(filterTools(searchInput.value.trim().toLowerCase())); 
+    });
+    tagsWrap.appendChild(untaggedBtn);
+  }
 
   Array.from(allTags).sort().forEach(tag => {
     const btn = document.createElement('button');
@@ -265,8 +305,9 @@ function renderGrid(tools) {
   emptyState.classList.toggle('hidden', allTools.length > 0 || query.length > 0 || currentFilter !== 'all');
   noResults.classList.toggle('hidden',  !(tools.length === 0 && (query.length > 0 || currentFilter !== 'all' || viewMode === 'bookmarks')));
 
-  // We only enable drag-and-drop if we are viewing the default list (no filters, no bookmarks)
-  const isDraggable = (query === '' && currentFilter === 'all' && viewMode === 'tools');
+  const isDraggable = (query === '' && activeTag === null && 
+                      ((viewMode === 'tools' && currentFilter === 'all') || 
+                       (viewMode === 'bookmarks' && sortMode === 'manual')));
 
   tools.forEach((tool, i) => {
     const card = document.createElement('div');
@@ -280,6 +321,13 @@ function renderGrid(tools) {
       card.addEventListener('dragend', handleDragEnd);
       card.addEventListener('dragover', handleDragOver);
       card.addEventListener('drop', handleDrop);
+    }
+
+    if (viewMode === 'bookmarks' && tool.pinned) {
+      const pinBadge = document.createElement('div');
+      pinBadge.className = 'pin-badge';
+      pinBadge.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 2L12 10M12 22L12 14M10 2L14 2M10 22L14 22M6 10L18 10C19.1046 10 20 10.8954 20 12V14C20 15.1046 19.1046 16 18 16L6 16C4.89543 16 4 15.1046 4 14V12C4 10.8954 4.89543 10 6 10Z"/></svg>`;
+      card.appendChild(pinBadge);
     }
 
     // icon
@@ -319,8 +367,25 @@ function renderGrid(tools) {
     card.appendChild(iconWrap);
     card.appendChild(name);
     card.appendChild(date);
-    card.appendChild(menuBtnEl);
+    
+    // tags logic
+    if (tool.isBookmark && tool.tags && tool.tags.length > 0) {
+      const tagRow = document.createElement('div');
+      tagRow.className = 'card-tags';
+      tool.tags.slice(0, 3).forEach(tag => {
+        const span = document.createElement('span');
+        span.textContent = tag;
+        tagRow.appendChild(span);
+      });
+      if (tool.tags.length > 3) {
+         const span = document.createElement('span');
+         span.textContent = '+' + (tool.tags.length - 3);
+         tagRow.appendChild(span);
+      }
+      card.appendChild(tagRow);
+    }
 
+    card.appendChild(menuBtnEl);
     card.addEventListener('click', () => launchTool(tool.id));
     toolGrid.appendChild(card);
   });
@@ -367,25 +432,23 @@ async function saveNewOrder() {
   const cards = Array.from(toolGrid.querySelectorAll('.tool-card'));
   if (!cards.length) return;
 
-  const newOrderIds = cards.map(c => c.dataset.id);
+  const isToolsValid = viewMode === 'tools' && searchInput.value.trim() === '' && currentFilter === 'all';
+  const isBookmarksValid = viewMode === 'bookmarks' && searchInput.value.trim() === '' && activeTag === null && sortMode === 'manual';
 
-  // Safety check: ensure we aren't saving a partial filtered view
-  const q = searchInput.value.trim().toLowerCase();
-  if (q !== '' || currentFilter !== 'all' || viewMode !== 'tools') return;
+  if (!isToolsValid && !isBookmarksValid) return;
 
-  const toolMap = new Map(allTools.map(t => [t.id, t]));
-  allTools = newOrderIds.map((id, index) => {
-    const t = toolMap.get(id);
-    if (t) {
-      t.order = index;
-      return t;
-    }
-    return null;
-  }).filter(Boolean);
-
-  for (const tool of allTools) {
-    dbPut(tool).catch(err => console.error(err));
+  const visibleIds = cards.map(c => c.dataset.id);
+  const renderedTools = visibleIds.map(id => allTools.find(t => t.id === id)).filter(Boolean);
+  
+  const availableOrders = renderedTools.map(t => t.order ?? t.createdAt).sort((a, b) => a - b);
+  
+  for(let i=0; i<renderedTools.length; i++){
+    const t = renderedTools[i];
+    t.order = availableOrders[i];
+    await dbPut(t).catch(err => console.error(err));
   }
+
+  renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
 }
 
 // ── END D&D ──────────────────────────────────────────────────
@@ -420,11 +483,11 @@ function filterTools(query) {
   if (viewMode === 'bookmarks') {
     list = list.filter(t => t.isBookmark);
     if (activeTag) {
-      list = list.filter(t => t.tags && t.tags.includes(activeTag));
+      if (activeTag === 'Untagged') list = list.filter(t => !t.tags || t.tags.length === 0);
+      else list = list.filter(t => t.tags && t.tags.includes(activeTag));
     }
   } else {
     list = list.filter(t => !t.isBookmark);
-    // Apply URL / HTML Type Filter
     if (urlSupportEnabled && currentFilter !== 'all') {
       list = list.filter(t => {
         const type = t.type === 'url' ? 'url' : 'html';
@@ -433,17 +496,30 @@ function filterTools(query) {
     }
   }
 
-  // Apply Search
   if (query) {
     list = list.filter(t => 
       t.name.toLowerCase().includes(query) || 
       (t.tags && t.tags.some(tag => tag.toLowerCase().includes(query)))
     );
   }
+
+  list.sort((a, b) => {
+    if (viewMode === 'bookmarks') {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      if (sortMode === 'recent_open') return (b.openedAt || 0) - (a.openedAt || 0);
+      if (sortMode === 'most_open') return (b.openCount || 0) - (a.openCount || 0);
+      if (sortMode === 'recent_mod') return (b.modifiedAt || b.createdAt) - (a.modifiedAt || a.createdAt);
+      if (sortMode === 'date_add') return b.createdAt - a.createdAt;
+      if (sortMode === 'alpha_asc') return a.name.localeCompare(b.name);
+      if (sortMode === 'alpha_desc') return b.name.localeCompare(a.name);
+    }
+    return (a.order ?? a.createdAt) - (b.order ?? b.createdAt);
+  });
+
   return list;
 }
 
-// ── SEARCH & FILTER HEADER ───────────────────────────────────
+// ── SEARCH & FILTER/SORT HEADER ──────────────────────────────
 searchInput.addEventListener('input', () => {
   const q = searchInput.value.trim().toLowerCase();
   searchClear.classList.toggle('visible', q.length > 0);
@@ -459,9 +535,7 @@ searchClear.addEventListener('click', () => {
 
 filterBtn.addEventListener('click', e => {
   e.stopPropagation();
-  const open = !filterDropdown.classList.contains('hidden');
-  if (open) { filterDropdown.classList.add('hidden'); }
-  else      { filterDropdown.classList.remove('hidden'); }
+  filterDropdown.classList.toggle('hidden');
   if (!menuDropdown.classList.contains('hidden')) closeMenu();
 });
 
@@ -474,17 +548,29 @@ filterDropdown.addEventListener('click', e => {
   renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
 });
 
+sortBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  sortDropdown.classList.toggle('hidden');
+  if (!menuDropdown.classList.contains('hidden')) closeMenu();
+});
+
+sortDropdown.addEventListener('click', e => {
+  const btn = e.target.closest('.dropdown-item');
+  if (!btn) return;
+  sortMode = btn.dataset.sort;
+  localStorage.setItem('sortMode', sortMode);
+  
+  document.querySelectorAll('#sortDropdown .dropdown-item').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  
+  sortDropdown.classList.add('hidden');
+  renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
+});
+
 viewBookmarksBtn.addEventListener('click', () => {
   viewMode = viewMode === 'tools' ? 'bookmarks' : 'tools';
   localStorage.setItem('viewMode', viewMode);
-  
-  if (viewMode === 'bookmarks') {
-    viewBookmarksBtn.classList.add('active');
-    filterWrap.classList.add('hidden');
-  } else {
-    viewBookmarksBtn.classList.remove('active');
-    if (urlSupportEnabled) filterWrap.classList.remove('hidden');
-  }
+  applyUrlSupportState();
   
   activeTag = null;
   searchInput.value = '';
@@ -492,6 +578,11 @@ viewBookmarksBtn.addEventListener('click', () => {
   renderGrid(filterTools(''));
 });
 
+document.addEventListener('click', e => {
+  if (!menuDropdown.classList.contains('hidden') && !menuDropdown.contains(e.target)) closeMenu();
+  if (!filterDropdown.classList.contains('hidden') && !filterWrap.contains(e.target)) filterDropdown.classList.add('hidden');
+  if (!sortDropdown.classList.contains('hidden') && !sortWrap.contains(e.target)) sortDropdown.classList.add('hidden');
+});
 
 // ── LOADER ───────────────────────────────────────────────────
 function showLoader() {
@@ -688,8 +779,20 @@ async function launchTool(id) {
     const tool = await dbGet(id);
     if (!tool) return;
     
-    // Bookmark handling
+    // Bookmark tracking & launching
     if (tool.isBookmark) {
+      tool.openCount = (tool.openCount || 0) + 1;
+      tool.openedAt = Date.now();
+      await dbPut(tool);
+      
+      const idx = allTools.findIndex(t => t.id === tool.id);
+      if (idx > -1) allTools[idx] = tool;
+      
+      // Auto re-render if a related sort mode is active to show changes
+      if (sortMode === 'recent_open' || sortMode === 'most_open') {
+        renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
+      }
+
       window.open(tool.url, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -750,8 +853,43 @@ window.addEventListener('popstate', () => {
   if (viewer.classList.contains('active')) closeTool();
 });
 
-// ── ADD TOOL SHEET ────────────────────────────────────────────
+// ── ADD TOOL SHEET & CLEAR BTNS ──────────────────────────────
+function updateClearBtnVisibility(input, btn) {
+  if (input.value.length > 0) btn.classList.remove('hidden');
+  else btn.classList.add('hidden');
+}
+
+toolNameInput.addEventListener('input', () => updateClearBtnVisibility(toolNameInput, toolNameClearBtn));
+toolNameClearBtn.addEventListener('click', () => {
+  toolNameInput.value = '';
+  updateClearBtnVisibility(toolNameInput, toolNameClearBtn);
+  toolNameInput.focus();
+});
+
+urlInput.addEventListener('input', () => {
+  updateClearBtnVisibility(urlInput, urlClearBtn);
+  processUrlAutoFill(urlInput.value.trim());
+});
+urlClearBtn.addEventListener('click', () => {
+  urlInput.value = '';
+  updateClearBtnVisibility(urlInput, urlClearBtn);
+  urlInput.focus();
+});
+
 addBtn.addEventListener('click', () => openAddSheet());
+addUrlFab.addEventListener('click', async () => {
+  openAddSheet('add', null, 'url');
+  try {
+    const text = await navigator.clipboard.readText();
+    if (isValidHttpUrl(text)) {
+      urlInput.value = text;
+      updateClearBtnVisibility(urlInput, urlClearBtn);
+      processUrlAutoFill(text);
+    }
+  } catch(err) {
+    // clipboard access denied or empty, silently proceed
+  }
+});
 
 document.getElementsByName('toolType').forEach(radio => {
   radio.addEventListener('change', e => {
@@ -771,16 +909,18 @@ document.getElementsByName('toolType').forEach(radio => {
   });
 });
 
-function openAddSheet(mode = 'add', toolId = null) {
+function openAddSheet(mode = 'add', toolId = null, forceType = null) {
   editMode = mode !== 'add';
   activeToolId = toolId;
 
   // reset form
   toolNameInput.value = '';
+  updateClearBtnVisibility(toolNameInput, toolNameClearBtn);
   htmlFileInput.value = '';
   htmlPickText.textContent = 'Choose .html file';
   htmlPickLabel.classList.remove('has-file');
   urlInput.value = '';
+  updateClearBtnVisibility(urlInput, urlClearBtn);
   isBookmarkCheckbox.checked = true;
   tagsInput.value = '';
   if (typeof tagsSuggestionBox !== 'undefined' && tagsSuggestionBox) tagsSuggestionBox.classList.add('hidden');
@@ -795,19 +935,19 @@ function openAddSheet(mode = 'add', toolId = null) {
   bookmarkGroup.classList.add('hidden');
   tagsGroup.classList.add('hidden');
 
-  document.querySelector('input[name="toolType"][value="html"]').checked = true;
+  let typeToSelect = forceType ? forceType : 'html';
+  document.querySelector(`input[name="toolType"][value="${typeToSelect}"]`).checked = true;
 
   if (editMode) {
     sheetTitle.textContent = 'Edit Settings';
     htmlRequired.style.display = 'none';
     saveToolBtn.textContent    = 'Save Changes';
-    
-    // Hide Type configuration & URL config entirely in edit mode
     toolTypeGroup.classList.add('hidden');
 
     dbGet(toolId).then(tool => {
       if (tool) {
         toolNameInput.value = tool.name;
+        updateClearBtnVisibility(toolNameInput, toolNameClearBtn);
         if (tool.icon) {
           iconPreview.src = tool.icon;
           iconPreview.classList.remove('hidden');
@@ -826,6 +966,7 @@ function openAddSheet(mode = 'add', toolId = null) {
           htmlFileGroup.classList.add('hidden');
           urlInputGroup.classList.remove('hidden');
           urlInput.value = tool.url || '';
+          updateClearBtnVisibility(urlInput, urlClearBtn);
           bookmarkGroup.classList.remove('hidden');
           tagsGroup.classList.remove('hidden');
           fetchIconBtn.style.display = 'inline-flex';
@@ -857,7 +998,11 @@ function openAddSheet(mode = 'add', toolId = null) {
 
   addSheet.classList.remove('hidden');
   sheetOverlay.classList.remove('hidden');
-  setTimeout(() => toolNameInput.focus(), 300);
+  
+  setTimeout(() => {
+     if (forceType === 'url') urlInput.focus();
+     else toolNameInput.focus();
+  }, 300);
 }
 
 function closeAddSheet() {
@@ -867,6 +1012,42 @@ function closeAddSheet() {
 
 cancelSheetBtn.addEventListener('click', closeAddSheet);
 sheetOverlay.addEventListener('click', closeAddSheet);
+
+// Auto-fill Logic
+function processUrlAutoFill(urlVal) {
+  if (!isValidHttpUrl(urlVal)) return;
+  try {
+    const u = new URL(urlVal);
+    let domain = u.hostname.replace(/^www\./, '');
+    let autoName = domain;
+    let autoTag = domain.split('.')[0]; 
+
+    if (domain === 'github.com') {
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2) {
+        autoName = parts[1]; // repo
+      } else if (parts.length === 1) {
+        autoName = parts[0]; // user
+      }
+    } else if (domain === 'github.io') {
+      autoTag = 'github';
+    }
+
+    if (!toolNameInput.value.trim()) {
+      toolNameInput.value = autoName.charAt(0).toUpperCase() + autoName.slice(1);
+      updateClearBtnVisibility(toolNameInput, toolNameClearBtn);
+    }
+    
+    if (tagsGroup && !tagsGroup.classList.contains('hidden')) {
+      let currentTags = tagsInput.value.split(',').map(t=>t.trim()).filter(Boolean);
+      if (autoTag && !currentTags.includes(autoTag)) {
+        currentTags.push(autoTag);
+        tagsInput.value = currentTags.join(', ') + (currentTags.length ? ', ' : '');
+      }
+    }
+  } catch(e) {}
+}
+
 
 // HTML file pick
 htmlFileInput.addEventListener('change', () => {
@@ -879,6 +1060,7 @@ htmlFileInput.addEventListener('change', () => {
     htmlPickLabel.classList.add('has-file');
     if (!toolNameInput.value.trim()) {
       toolNameInput.value = file.name.replace(/\.html?$/i, '');
+      updateClearBtnVisibility(toolNameInput, toolNameClearBtn);
     }
   };
   reader.readAsText(file);
@@ -926,7 +1108,6 @@ fetchIconBtn.addEventListener('click', () => {
   }
 });
 
-// URL validation helper
 function isValidHttpUrl(string) {
   try {
     const u = new URL(string);
@@ -940,7 +1121,6 @@ saveToolBtn.addEventListener('click', async () => {
   if (!name) { showToast('Please enter a tool name', 'error'); return; }
 
   if (!editMode) {
-    // ADD
     const type = urlSupportEnabled ? document.querySelector('input[name="toolType"]:checked').value : 'html';
     
     let finalHtml = null;
@@ -960,15 +1140,17 @@ saveToolBtn.addEventListener('click', async () => {
     }
 
     const tool = {
-      id:        crypto.randomUUID(),
+      id:         crypto.randomUUID(),
       name,
-      icon:      pendingNewIcon || null,
-      type:      type,
-      html:      finalHtml,
-      url:       finalUrl,
-      createdAt: Date.now(),
-      order:     allTools.length,
+      icon:       pendingNewIcon || null,
+      type:       type,
+      html:       finalHtml,
+      url:        finalUrl,
+      createdAt:  Date.now(),
+      modifiedAt: Date.now(),
+      order:      allTools.length,
       isBookmark,
+      pinned:     false,
       tags
     };
 
@@ -982,12 +1164,12 @@ saveToolBtn.addEventListener('click', async () => {
       showToast('Failed to save tool', 'error');
     }
   } else {
-    // EDIT
     try {
       const tool = await dbGet(activeToolId);
       if (!tool) return;
       tool.name = name;
       tool.icon = pendingNewIcon;
+      tool.modifiedAt = Date.now();
 
       const type = tool.type === 'url' ? 'url' : 'html';
       if (type === 'html' && pendingHtmlContent) {
@@ -1020,13 +1202,10 @@ menuBtn.addEventListener('click', e => {
   if (open) { closeMenu(); }
   else      { menuDropdown.classList.remove('hidden'); menuOverlay.classList.remove('hidden'); }
   if (!filterDropdown.classList.contains('hidden')) filterDropdown.classList.add('hidden');
+  if (!sortDropdown.classList.contains('hidden')) sortDropdown.classList.add('hidden');
 });
 function closeMenu() { menuDropdown.classList.add('hidden'); menuOverlay.classList.add('hidden'); }
 menuOverlay.addEventListener('click', closeMenu);
-document.addEventListener('click', e => {
-  if (!menuDropdown.classList.contains('hidden') && !menuDropdown.contains(e.target)) closeMenu();
-  if (!filterDropdown.classList.contains('hidden') && !filterWrap.contains(e.target)) filterDropdown.classList.add('hidden');
-});
 
 // ── TOGGLES ───────────────────────────────────────────────────
 tabsToggleBtn.addEventListener('click', () => {
@@ -1074,9 +1253,20 @@ function openToolMenu(id, anchor) {
     ctxUpdateUrl.classList.add('hidden');
   }
 
+  if (tool && tool.isBookmark) {
+    ctxPin.classList.remove('hidden');
+    ctxCopyUrl.classList.remove('hidden');
+    ctxOpenExternal.classList.remove('hidden');
+    ctxPinText.textContent = tool.pinned ? 'Unpin Bookmark' : 'Pin Bookmark';
+  } else {
+    ctxPin.classList.add('hidden');
+    ctxCopyUrl.classList.add('hidden');
+    ctxOpenExternal.classList.add('hidden');
+  }
+
   // position near anchor
   const rect = anchor.getBoundingClientRect();
-  const menuW = 210, menuH = 190;
+  const menuW = 210, menuH = tool.isBookmark ? 300 : 190;
   let top  = rect.bottom + 4;
   let left = rect.left - menuW + rect.width;
   if (top + menuH > window.innerHeight - 12) top = rect.top - menuH - 4;
@@ -1117,6 +1307,34 @@ ctxChangeIcon.addEventListener('click', () => {
   changeIconInput.click();
 });
 
+ctxPin.addEventListener('click', async () => {
+  closeToolMenu();
+  try {
+    const tool = await dbGet(activeToolId);
+    if(!tool) return;
+    tool.pinned = !tool.pinned;
+    tool.modifiedAt = Date.now();
+    await dbPut(tool);
+    allTools.find(t => t.id === activeToolId).pinned = tool.pinned;
+    renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
+  } catch (err) {}
+});
+
+ctxCopyUrl.addEventListener('click', () => {
+  closeToolMenu();
+  const tool = allTools.find(t => t.id === activeToolId);
+  if(tool && tool.url) {
+    navigator.clipboard.writeText(tool.url);
+    showToast('URL copied', 'success');
+  }
+});
+
+ctxOpenExternal.addEventListener('click', () => {
+  closeToolMenu();
+  const tool = allTools.find(t => t.id === activeToolId);
+  if(tool && tool.url) window.open(tool.url, '_blank', 'noopener,noreferrer');
+});
+
 ctxDelete.addEventListener('click', () => {
   closeToolMenu();
   dbGet(activeToolId).then(tool => {
@@ -1136,6 +1354,7 @@ updateHtmlInput.addEventListener('change', () => {
       const tool = await dbGet(activeToolId);
       if (!tool) return;
       tool.html = e.target.result;
+      tool.modifiedAt = Date.now();
       await dbPut(tool);
       const idx = allTools.findIndex(t => t.id === activeToolId);
       if (idx > -1) allTools[idx] = tool;
@@ -1156,6 +1375,7 @@ changeIconInput.addEventListener('change', () => {
       const tool = await dbGet(activeToolId);
       if (!tool) return;
       tool.icon = data;
+      tool.modifiedAt = Date.now();
       await dbPut(tool);
       const idx = allTools.findIndex(t => t.id === activeToolId);
       if (idx > -1) allTools[idx] = tool;
@@ -1179,9 +1399,13 @@ async function doRename() {
     const tool = await dbGet(activeToolId);
     if (!tool) return;
     tool.name = newName;
+    tool.modifiedAt = Date.now();
     await dbPut(tool);
     const idx = allTools.findIndex(t => t.id === activeToolId);
-    if (idx > -1) allTools[idx].name = newName;
+    if (idx > -1) {
+      allTools[idx].name = newName;
+      allTools[idx].modifiedAt = tool.modifiedAt;
+    }
     renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
     renameDialog.classList.add('hidden');
     showToast('Renamed', 'success');
@@ -1295,6 +1519,7 @@ document.addEventListener('keydown', e => {
       closeToolMenu();
       closeMenu();
       if (!filterDropdown.classList.contains('hidden')) filterDropdown.classList.add('hidden');
+      if (!sortDropdown.classList.contains('hidden')) sortDropdown.classList.add('hidden');
       if (!deleteDialog.classList.contains('hidden')) deleteDialog.classList.add('hidden');
       if (!renameDialog.classList.contains('hidden')) renameDialog.classList.add('hidden');
     }
