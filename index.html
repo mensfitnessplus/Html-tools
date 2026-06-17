@@ -32,20 +32,22 @@
           <button class="icon-btn" id="viewBookmarksBtn" aria-label="Bookmarks" title="Bookmarks">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
           </button>
+
+          <button class="icon-btn hidden" id="gridToggleBtn" aria-label="Toggle Grid" title="Toggle Grid View">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+          </button>
           
           <div id="sortWrap" class="filter-wrap hidden">
             <button class="icon-btn filter-btn" id="sortBtn" aria-label="Sort Bookmarks">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="4" x2="12" y2="20"/><polyline points="18 14 12 20 6 14"/><polyline points="18 10 12 4 6 10" style="opacity:0.3"/></svg>
-              <span id="sortLabel">Sort</span>
+              <span id="sortLabel">Added</span>
             </button>
             <div id="sortDropdown" class="dropdown hidden">
-              <button class="dropdown-item active" data-sort="manual">Manual / Drag</button>
-              <button class="dropdown-item" data-sort="recent_open">Recently Opened</button>
-              <button class="dropdown-item" data-sort="most_open">Most Opened</button>
-              <button class="dropdown-item" data-sort="recent_mod">Recently Modified</button>
-              <button class="dropdown-item" data-sort="date_add">Date Added</button>
-              <button class="dropdown-item" data-sort="alpha_asc">Alphabetical (A-Z)</button>
-              <button class="dropdown-item" data-sort="alpha_desc">Alphabetical (Z-A)</button>
+              <button class="dropdown-item" data-sort="open">Opened <span class="sort-dir"></span></button>
+              <button class="dropdown-item" data-sort="count">Open Count <span class="sort-dir"></span></button>
+              <button class="dropdown-item" data-sort="mod">Modified <span class="sort-dir"></span></button>
+              <button class="dropdown-item active" data-sort="add">Added <span class="sort-dir">↓</span></button>
+              <button class="dropdown-item" data-sort="alpha">Alphabetical <span class="sort-dir"></span></button>
             </div>
           </div>
 
@@ -248,7 +250,6 @@
       Change Icon
     </button>
     
-    <!-- New Bookmark specific options -->
     <button class="context-item hidden" id="ctxPin" role="menuitem">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L12 10M12 22L12 14M10 2L14 2M10 22L14 22M6 10L18 10C19.1046 10 20 10.8954 20 12V14C20 15.1046 19.1046 16 18 16L6 16C4.89543 16 4 15.1046 4 14V12C4 10.8954 4.89543 10 6 10Z"/></svg>
       <span id="ctxPinText">Pin Bookmark</span>
@@ -256,10 +257,6 @@
     <button class="context-item hidden" id="ctxCopyUrl" role="menuitem">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
       Copy URL
-    </button>
-    <button class="context-item hidden" id="ctxOpenExternal" role="menuitem">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-      Open in Browser
     </button>
     
     <div class="context-divider"></div>

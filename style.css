@@ -140,6 +140,18 @@ html, body {
   gap: 12px;
 }
 
+/* Optional 3-column view for bookmarks */
+.tool-grid.grid-3-cols {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.tool-grid.grid-3-cols .tool-card {
+  padding: 14px 8px 10px;
+}
+.tool-grid.grid-3-cols .tool-name {
+  font-size: 0.75rem;
+}
+
 /* ── TOOL CARD ───────────────────────────────────────────────── */
 .tool-card {
   background: var(--surface);
@@ -558,6 +570,9 @@ html, body {
 .dropdown-item svg { width: 17px; height: 17px; color: var(--text-2); flex-shrink: 0; }
 .dropdown-item:hover { background: var(--surface3); }
 
+/* Sort Dir Helper */
+.sort-dir { margin-left: auto; font-weight: bold; color: var(--accent); }
+
 /* ── BOTTOM SHEET ───────────────────────────────────────────── */
 .sheet {
   position: fixed;
@@ -869,7 +884,7 @@ html, body {
 .filter-wrap { position: relative; }
 .filter-btn { width: auto; padding: 0 12px; border-radius: 50px; gap: 6px; }
 .filter-btn span { font-size: .85rem; font-weight: 600; }
-#filterDropdown, #sortDropdown { position: absolute; top: 46px; right: 0; min-width: 120px; z-index: 200; }
+#filterDropdown, #sortDropdown { position: absolute; top: 46px; right: 0; min-width: 130px; z-index: 200; }
 
 /* Tool Type Radio Group */
 .type-radios { display: flex; gap: 16px; margin-top: 4px; margin-bottom: 8px; }

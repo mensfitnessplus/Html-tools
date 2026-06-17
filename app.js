@@ -90,8 +90,10 @@ let tabsEnabled       = localStorage.getItem('tabsEnabled') !== 'false';
 let urlSupportEnabled = localStorage.getItem('urlSupportEnabled') === 'true'; 
 let currentFilter     = 'all'; 
 let viewMode          = localStorage.getItem('viewMode') || 'tools'; 
-let sortMode          = localStorage.getItem('sortMode') || 'manual';
-let activeTag         = null;
+let sortMode          = localStorage.getItem('sortMode') || 'add';
+let sortAsc           = localStorage.getItem('sortAsc') === 'true';
+let activeTag         = localStorage.getItem('activeTag') || null;
+let bookmarksGridCols = localStorage.getItem('bookmarksGridCols') || 'auto';
 
 // ── DOM REFS ─────────────────────────────────────────────────
 const hub            = document.getElementById('hub');
@@ -117,6 +119,7 @@ const sortWrap         = document.getElementById('sortWrap');
 const sortBtn          = document.getElementById('sortBtn');
 const sortLabel        = document.getElementById('sortLabel');
 const sortDropdown     = document.getElementById('sortDropdown');
+const gridToggleBtn    = document.getElementById('gridToggleBtn');
 const menuBtn          = document.getElementById('menuBtn');
 const menuDropdown     = document.getElementById('menuDropdown');
 const menuOverlay      = document.getElementById('menuOverlay');
@@ -170,7 +173,6 @@ const ctxChangeIcon  = document.getElementById('ctxChangeIcon');
 const ctxPin         = document.getElementById('ctxPin');
 const ctxPinText     = document.getElementById('ctxPinText');
 const ctxCopyUrl     = document.getElementById('ctxCopyUrl');
-const ctxOpenExternal= document.getElementById('ctxOpenExternal');
 const ctxDelete      = document.getElementById('ctxDelete');
 
 // dialogs
@@ -197,12 +199,6 @@ async function init() {
   }
   
   if (viewMode === 'bookmarks') viewBookmarksBtn.classList.add('active');
-  
-  // Set correct active state in sort dropdown
-  document.querySelectorAll('#sortDropdown .dropdown-item').forEach(btn => {
-    if (btn.dataset.sort === sortMode) btn.classList.add('active');
-    else btn.classList.remove('active');
-  });
 
   applyUrlSupportState();
 
@@ -216,6 +212,30 @@ async function init() {
   }
 }
 
+function updateSortUI() {
+  document.querySelectorAll('#sortDropdown .dropdown-item').forEach(btn => {
+    const dirSpan = btn.querySelector('.sort-dir');
+    if (btn.dataset.sort === sortMode) {
+      btn.classList.add('active');
+      dirSpan.textContent = sortAsc ? '↑' : '↓';
+      sortLabel.textContent = btn.textContent.replace(/[↑↓]/g, '').trim();
+    } else {
+      btn.classList.remove('active');
+      dirSpan.textContent = '';
+    }
+  });
+}
+
+function applyGridCols() {
+  if (viewMode === 'bookmarks' && bookmarksGridCols === '3') {
+    toolGrid.classList.add('grid-3-cols');
+    gridToggleBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="4" width="6" height="16" rx="1"/><rect x="9" y="4" width="6" height="16" rx="1"/><rect x="16" y="4" width="6" height="16" rx="1"/></svg>`;
+  } else {
+    toolGrid.classList.remove('grid-3-cols');
+    gridToggleBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>`;
+  }
+}
+
 // Apply URL Support Toggle Changes Visually
 function applyUrlSupportState() {
   urlSupportToggleLabel.textContent = `URL Support: ${urlSupportEnabled ? 'On' : 'Off'}`;
@@ -223,19 +243,35 @@ function applyUrlSupportState() {
   if (viewMode === 'bookmarks') {
     filterWrap.classList.add('hidden');
     sortWrap.classList.remove('hidden');
-    if (urlSupportEnabled) addUrlFab.classList.remove('hidden');
-    else addUrlFab.classList.add('hidden');
+    gridToggleBtn.classList.remove('hidden');
+    
+    // Hide standard + button in bookmarks
+    addBtn.classList.add('hidden');
+    
+    // Show 🔗 button natively in the main position
+    addUrlFab.classList.remove('hidden');
+    addUrlFab.classList.remove('secondary-fab');
   } else {
     sortWrap.classList.add('hidden');
-    addUrlFab.classList.add('hidden');
-    if (urlSupportEnabled) filterWrap.classList.remove('hidden');
-    else {
+    gridToggleBtn.classList.add('hidden');
+    
+    // Show standard + button
+    addBtn.classList.remove('hidden');
+    
+    if (urlSupportEnabled) {
+      addUrlFab.classList.remove('hidden');
+      addUrlFab.classList.add('secondary-fab');
+      filterWrap.classList.remove('hidden');
+    } else {
+      addUrlFab.classList.add('hidden');
       filterWrap.classList.add('hidden');
       currentFilter = 'all';
       filterLabel.textContent = 'All';
     }
   }
 
+  applyGridCols();
+  updateSortUI();
   if (allTools.length) renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
 }
 
@@ -269,6 +305,7 @@ function renderTags() {
   allBtn.textContent = 'All';
   allBtn.addEventListener('click', () => { 
     activeTag = null; 
+    localStorage.removeItem('activeTag');
     renderGrid(filterTools(searchInput.value.trim().toLowerCase())); 
   });
   tagsWrap.appendChild(allBtn);
@@ -279,6 +316,7 @@ function renderTags() {
     untaggedBtn.textContent = 'Untagged';
     untaggedBtn.addEventListener('click', () => { 
       activeTag = 'Untagged'; 
+      localStorage.setItem('activeTag', 'Untagged');
       renderGrid(filterTools(searchInput.value.trim().toLowerCase())); 
     });
     tagsWrap.appendChild(untaggedBtn);
@@ -290,6 +328,7 @@ function renderTags() {
     btn.textContent = tag;
     btn.addEventListener('click', () => { 
       activeTag = tag; 
+      localStorage.setItem('activeTag', tag);
       renderGrid(filterTools(searchInput.value.trim().toLowerCase())); 
     });
     tagsWrap.appendChild(btn);
@@ -305,9 +344,7 @@ function renderGrid(tools) {
   emptyState.classList.toggle('hidden', allTools.length > 0 || query.length > 0 || currentFilter !== 'all');
   noResults.classList.toggle('hidden',  !(tools.length === 0 && (query.length > 0 || currentFilter !== 'all' || viewMode === 'bookmarks')));
 
-  const isDraggable = (query === '' && activeTag === null && 
-                      ((viewMode === 'tools' && currentFilter === 'all') || 
-                       (viewMode === 'bookmarks' && sortMode === 'manual')));
+  const isDraggable = (query === '' && (viewMode === 'tools' && currentFilter === 'all'));
 
   tools.forEach((tool, i) => {
     const card = document.createElement('div');
@@ -433,9 +470,7 @@ async function saveNewOrder() {
   if (!cards.length) return;
 
   const isToolsValid = viewMode === 'tools' && searchInput.value.trim() === '' && currentFilter === 'all';
-  const isBookmarksValid = viewMode === 'bookmarks' && searchInput.value.trim() === '' && activeTag === null && sortMode === 'manual';
-
-  if (!isToolsValid && !isBookmarksValid) return;
+  if (!isToolsValid) return; // Only save manual order in normal Tools view
 
   const visibleIds = cards.map(c => c.dataset.id);
   const renderedTools = visibleIds.map(id => allTools.find(t => t.id === id)).filter(Boolean);
@@ -506,12 +541,19 @@ function filterTools(query) {
   list.sort((a, b) => {
     if (viewMode === 'bookmarks') {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-      if (sortMode === 'recent_open') return (b.openedAt || 0) - (a.openedAt || 0);
-      if (sortMode === 'most_open') return (b.openCount || 0) - (a.openCount || 0);
-      if (sortMode === 'recent_mod') return (b.modifiedAt || b.createdAt) - (a.modifiedAt || a.createdAt);
-      if (sortMode === 'date_add') return b.createdAt - a.createdAt;
-      if (sortMode === 'alpha_asc') return a.name.localeCompare(b.name);
-      if (sortMode === 'alpha_desc') return b.name.localeCompare(a.name);
+      
+      let valA, valB;
+      switch(sortMode) {
+        case 'open': valA = a.openedAt || 0; valB = b.openedAt || 0; break;
+        case 'count': valA = a.openCount || 0; valB = b.openCount || 0; break;
+        case 'mod': valA = a.modifiedAt || a.createdAt; valB = b.modifiedAt || b.createdAt; break;
+        case 'alpha': valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break;
+        case 'add': default: valA = a.createdAt; valB = b.createdAt; break;
+      }
+      
+      if (valA < valB) return sortAsc ? -1 : 1;
+      if (valA > valB) return sortAsc ? 1 : -1;
+      return 0;
     }
     return (a.order ?? a.createdAt) - (b.order ?? b.createdAt);
   });
@@ -557,14 +599,25 @@ sortBtn.addEventListener('click', e => {
 sortDropdown.addEventListener('click', e => {
   const btn = e.target.closest('.dropdown-item');
   if (!btn) return;
-  sortMode = btn.dataset.sort;
+  const clickedSort = btn.dataset.sort;
+  if (clickedSort === sortMode) {
+    sortAsc = !sortAsc;
+  } else {
+    sortMode = clickedSort;
+    sortAsc = (sortMode === 'alpha'); // default Alpha to A-Z (asc), others to desc
+  }
   localStorage.setItem('sortMode', sortMode);
+  localStorage.setItem('sortAsc', sortAsc);
   
-  document.querySelectorAll('#sortDropdown .dropdown-item').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  
+  updateSortUI();
   sortDropdown.classList.add('hidden');
   renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
+});
+
+gridToggleBtn.addEventListener('click', () => {
+  bookmarksGridCols = bookmarksGridCols === '3' ? 'auto' : '3';
+  localStorage.setItem('bookmarksGridCols', bookmarksGridCols);
+  applyGridCols();
 });
 
 viewBookmarksBtn.addEventListener('click', () => {
@@ -572,7 +625,7 @@ viewBookmarksBtn.addEventListener('click', () => {
   localStorage.setItem('viewMode', viewMode);
   applyUrlSupportState();
   
-  activeTag = null;
+  // Do not reset active tag here to maintain memory
   searchInput.value = '';
   searchClear.classList.remove('visible');
   renderGrid(filterTools(''));
@@ -789,7 +842,7 @@ async function launchTool(id) {
       if (idx > -1) allTools[idx] = tool;
       
       // Auto re-render if a related sort mode is active to show changes
-      if (sortMode === 'recent_open' || sortMode === 'most_open') {
+      if (sortMode === 'open' || sortMode === 'count') {
         renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
       }
 
@@ -1020,7 +1073,7 @@ function processUrlAutoFill(urlVal) {
     const u = new URL(urlVal);
     let domain = u.hostname.replace(/^www\./, '');
     let autoName = domain;
-    let autoTag = domain.split('.')[0]; 
+    let autoTag = null; 
 
     if (domain === 'github.com') {
       const parts = u.pathname.split('/').filter(Boolean);
@@ -1029,6 +1082,7 @@ function processUrlAutoFill(urlVal) {
       } else if (parts.length === 1) {
         autoName = parts[0]; // user
       }
+      autoTag = 'github';
     } else if (domain === 'github.io') {
       autoTag = 'github';
     }
@@ -1038,9 +1092,9 @@ function processUrlAutoFill(urlVal) {
       updateClearBtnVisibility(toolNameInput, toolNameClearBtn);
     }
     
-    if (tagsGroup && !tagsGroup.classList.contains('hidden')) {
+    if (tagsGroup && !tagsGroup.classList.contains('hidden') && autoTag) {
       let currentTags = tagsInput.value.split(',').map(t=>t.trim()).filter(Boolean);
-      if (autoTag && !currentTags.includes(autoTag)) {
+      if (!currentTags.includes(autoTag)) {
         currentTags.push(autoTag);
         tagsInput.value = currentTags.join(', ') + (currentTags.length ? ', ' : '');
       }
@@ -1133,7 +1187,7 @@ saveToolBtn.addEventListener('click', async () => {
       if (!isValidHttpUrl(urlVal)) { showToast('Please enter a valid HTTP/HTTPS URL', 'error'); return; }
       finalUrl = urlVal;
       isBookmark = isBookmarkCheckbox.checked;
-      tags = tagsInput.value.split(',').map(t=>t.trim()).filter(Boolean);
+      tags = tagsInput.value.split(',').map(t=>t.toLowerCase().replace(/[\s-]/g, '')).filter(Boolean);
     } else {
       if (!pendingHtmlContent) { showToast('Please choose an HTML file', 'error'); return; }
       finalHtml = pendingHtmlContent;
@@ -1180,7 +1234,7 @@ saveToolBtn.addEventListener('click', async () => {
         if (!isValidHttpUrl(urlVal)) { showToast('Please enter a valid HTTP/HTTPS URL', 'error'); return; }
         tool.url = urlVal;
         tool.isBookmark = isBookmarkCheckbox.checked;
-        tool.tags = tagsInput.value.split(',').map(t=>t.trim()).filter(Boolean);
+        tool.tags = tagsInput.value.split(',').map(t=>t.toLowerCase().replace(/[\s-]/g, '')).filter(Boolean);
       }
       
       await dbPut(tool);
@@ -1256,17 +1310,15 @@ function openToolMenu(id, anchor) {
   if (tool && tool.isBookmark) {
     ctxPin.classList.remove('hidden');
     ctxCopyUrl.classList.remove('hidden');
-    ctxOpenExternal.classList.remove('hidden');
     ctxPinText.textContent = tool.pinned ? 'Unpin Bookmark' : 'Pin Bookmark';
   } else {
     ctxPin.classList.add('hidden');
     ctxCopyUrl.classList.add('hidden');
-    ctxOpenExternal.classList.add('hidden');
   }
 
   // position near anchor
   const rect = anchor.getBoundingClientRect();
-  const menuW = 210, menuH = tool.isBookmark ? 300 : 190;
+  const menuW = 210, menuH = tool.isBookmark ? 250 : 190;
   let top  = rect.bottom + 4;
   let left = rect.left - menuW + rect.width;
   if (top + menuH > window.innerHeight - 12) top = rect.top - menuH - 4;
@@ -1329,11 +1381,6 @@ ctxCopyUrl.addEventListener('click', () => {
   }
 });
 
-ctxOpenExternal.addEventListener('click', () => {
-  closeToolMenu();
-  const tool = allTools.find(t => t.id === activeToolId);
-  if(tool && tool.url) window.open(tool.url, '_blank', 'noopener,noreferrer');
-});
 
 ctxDelete.addEventListener('click', () => {
   closeToolMenu();
