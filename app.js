@@ -137,6 +137,7 @@ const bookmarkGroup  = document.getElementById('bookmarkGroup');
 const isBookmarkCheckbox = document.getElementById('isBookmarkCheckbox');
 const tagsGroup      = document.getElementById('tagsGroup');
 const tagsInput      = document.getElementById('tagsInput');
+const tagsSuggestionBox = document.getElementById('tagsSuggestionBox');
 const toolNameInput  = document.getElementById('toolNameInput');
 const htmlPickLabel  = document.getElementById('htmlPickLabel');
 const htmlPickText   = document.getElementById('htmlPickText');
@@ -782,6 +783,7 @@ function openAddSheet(mode = 'add', toolId = null) {
   urlInput.value = '';
   isBookmarkCheckbox.checked = true;
   tagsInput.value = '';
+  if (typeof tagsSuggestionBox !== 'undefined' && tagsSuggestionBox) tagsSuggestionBox.classList.add('hidden');
   pendingHtmlContent  = null;
   pendingNewIcon      = null;
   iconPreview.src     = '';
@@ -1301,3 +1303,53 @@ document.addEventListener('keydown', e => {
 
 // ── BOOT ─────────────────────────────────────────────────────
 init();
+
+// ── TAGS AUTOCOMPLETE ─────────────────────────────────────────
+function getAllUniqueTags() {
+  const tags = new Set();
+  allTools.forEach(t => {
+    if (t.tags) t.tags.forEach(tag => tags.add(tag));
+  });
+  return Array.from(tags).sort();
+}
+
+tagsInput.addEventListener('input', (e) => {
+  const val = e.target.value;
+  const parts = val.split(',');
+  const currentWord = parts[parts.length - 1].trimLeft(); 
+  const query = currentWord.trim().toLowerCase();
+
+  if (query.length === 0) {
+    tagsSuggestionBox.classList.add('hidden');
+    return;
+  }
+
+  const allAvailableTags = getAllUniqueTags();
+  const matches = allAvailableTags.filter(t => t.toLowerCase().includes(query));
+
+  if (matches.length === 0 || (matches.length === 1 && matches[0].toLowerCase() === query)) {
+    tagsSuggestionBox.classList.add('hidden');
+    return;
+  }
+
+  tagsSuggestionBox.innerHTML = '';
+  matches.forEach(match => {
+    const div = document.createElement('div');
+    div.className = 'tag-suggestion-item';
+    div.textContent = match;
+    div.addEventListener('click', () => {
+      parts[parts.length - 1] = (parts.length > 1 ? ' ' : '') + match;
+      tagsInput.value = parts.join(',') + ', ';
+      tagsSuggestionBox.classList.add('hidden');
+      tagsInput.focus();
+    });
+    tagsSuggestionBox.appendChild(div);
+  });
+  tagsSuggestionBox.classList.remove('hidden');
+});
+
+document.addEventListener('click', (e) => {
+  if (!tagsInput.contains(e.target) && tagsSuggestionBox && !tagsSuggestionBox.contains(e.target)) {
+    tagsSuggestionBox.classList.add('hidden');
+  }
+});
