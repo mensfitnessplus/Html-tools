@@ -29,6 +29,9 @@
           <span class="brand-name">Tool Hub</span>
         </div>
         <div class="header-actions">
+          <button class="icon-btn" id="viewBookmarksBtn" aria-label="Bookmarks" title="Bookmarks">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+          </button>
           <div id="filterWrap" class="filter-wrap hidden">
             <button class="icon-btn filter-btn" id="filterBtn" aria-label="Filter Tools">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
@@ -61,6 +64,7 @@
     </header>
 
     <main class="tool-grid-wrap">
+      <div id="tagsWrap" class="tags-wrap hidden"></div>
       <div id="toolGrid" class="tool-grid"></div>
       <div id="emptyState" class="empty-state hidden">
         <div class="empty-icon">
@@ -158,6 +162,18 @@
         <input type="url" id="urlInput" class="field-input" placeholder="https://example.com" />
       </div>
 
+      <div class="field-group hidden" id="bookmarkGroup">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--text); font-size: .95rem;">
+          <input type="checkbox" id="isBookmarkCheckbox" checked style="width:18px;height:18px;accent-color:var(--accent);">
+          <span>Save as Bookmark</span>
+        </label>
+      </div>
+
+      <div class="field-group hidden" id="tagsGroup">
+        <label class="field-label">Tags <span class="optional">(comma separated)</span></label>
+        <input type="text" id="tagsInput" class="field-input" placeholder="design, dev, reading" />
+      </div>
+
       <div class="field-group">
         <label class="field-label">Icon <span class="optional">(optional)</span></label>
         <div class="icon-pick-row">
@@ -172,6 +188,7 @@
             <span>Choose image</span>
             <input type="file" id="iconFileInput" accept="image/png,image/jpeg,image/webp" hidden />
           </label>
+          <button class="ghost-btn" id="fetchIconBtn" style="display:none">Fetch URL Icon</button>
           <button class="ghost-btn" id="clearIconBtn" style="display:none">Remove</button>
         </div>
       </div>
@@ -194,8 +211,8 @@
       Update HTML
     </button>
     <button class="context-item hidden" id="ctxUpdateUrl" role="menuitem">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-      Update URL
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      Edit Settings
     </button>
     <button class="context-item" id="ctxChangeIcon" role="menuitem">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -216,17 +233,6 @@
       <div class="dialog-actions">
         <button class="btn-secondary" id="cancelRenameBtn">Cancel</button>
         <button class="btn-primary" id="confirmRenameBtn">Rename</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="updateUrlDialog" class="dialog-wrap hidden" role="dialog" aria-modal="true">
-    <div class="dialog">
-      <h3 class="dialog-title">Update URL</h3>
-      <input type="url" id="updateUrlInput" class="field-input" placeholder="https://example.com" />
-      <div class="dialog-actions">
-        <button class="btn-secondary" id="cancelUpdateUrlBtn">Cancel</button>
-        <button class="btn-primary" id="confirmUpdateUrlBtn">Save</button>
       </div>
     </div>
   </div>

@@ -89,6 +89,8 @@ let editMode       = false;  // sheet is in "edit" mode (update HTML)
 let tabsEnabled       = localStorage.getItem('tabsEnabled') !== 'false';   // multi-tab mode toggle
 let urlSupportEnabled = localStorage.getItem('urlSupportEnabled') === 'true'; // URL support toggle
 let currentFilter     = 'all'; // filter mode: 'all', 'html', 'url'
+let viewMode          = localStorage.getItem('viewMode') || 'tools'; // 'tools' or 'bookmarks'
+let activeTag         = null;
 
 // ── DOM REFS ─────────────────────────────────────────────────
 const hub            = document.getElementById('hub');
@@ -105,20 +107,24 @@ const frameContainer = document.getElementById('frameContainer');
 const toolLoader     = document.getElementById('toolLoader');
 
 // header & menu
-const filterWrap     = document.getElementById('filterWrap');
-const filterBtn      = document.getElementById('filterBtn');
-const filterLabel    = document.getElementById('filterLabel');
-const filterDropdown = document.getElementById('filterDropdown');
-const menuBtn        = document.getElementById('menuBtn');
-const menuDropdown   = document.getElementById('menuDropdown');
-const menuOverlay    = document.getElementById('menuOverlay');
-const tabsToggleBtn  = document.getElementById('tabsToggleBtn');
-const tabsToggleLabel= document.getElementById('tabsToggleLabel');
+const filterWrap       = document.getElementById('filterWrap');
+const filterBtn        = document.getElementById('filterBtn');
+const filterLabel      = document.getElementById('filterLabel');
+const filterDropdown   = document.getElementById('filterDropdown');
+const menuBtn          = document.getElementById('menuBtn');
+const menuDropdown     = document.getElementById('menuDropdown');
+const menuOverlay      = document.getElementById('menuOverlay');
+const tabsToggleBtn    = document.getElementById('tabsToggleBtn');
+const tabsToggleLabel  = document.getElementById('tabsToggleLabel');
 const urlSupportToggleBtn   = document.getElementById('urlSupportToggleBtn');
 const urlSupportToggleLabel = document.getElementById('urlSupportToggleLabel');
-const exportBtn      = document.getElementById('exportBtn');
-const importBtn      = document.getElementById('importBtn');
-const importInput    = document.getElementById('importInput');
+const viewBookmarksBtn = document.getElementById('viewBookmarksBtn');
+const exportBtn        = document.getElementById('exportBtn');
+const importBtn        = document.getElementById('importBtn');
+const importInput      = document.getElementById('importInput');
+
+// tags
+const tagsWrap         = document.getElementById('tagsWrap');
 
 // sheet
 const addSheet       = document.getElementById('addSheet');
@@ -127,6 +133,10 @@ const sheetTitle     = document.getElementById('sheetTitle');
 const toolTypeGroup  = document.getElementById('toolTypeGroup');
 const htmlFileGroup  = document.getElementById('htmlFileGroup');
 const urlInputGroup  = document.getElementById('urlInputGroup');
+const bookmarkGroup  = document.getElementById('bookmarkGroup');
+const isBookmarkCheckbox = document.getElementById('isBookmarkCheckbox');
+const tagsGroup      = document.getElementById('tagsGroup');
+const tagsInput      = document.getElementById('tagsInput');
 const toolNameInput  = document.getElementById('toolNameInput');
 const htmlPickLabel  = document.getElementById('htmlPickLabel');
 const htmlPickText   = document.getElementById('htmlPickText');
@@ -137,6 +147,7 @@ const iconFileInput  = document.getElementById('iconFileInput');
 const iconPreview    = document.getElementById('iconPreview');
 const iconPlaceholder= document.getElementById('iconPlaceholder');
 const clearIconBtn   = document.getElementById('clearIconBtn');
+const fetchIconBtn   = document.getElementById('fetchIconBtn');
 const cancelSheetBtn = document.getElementById('cancelSheetBtn');
 const saveToolBtn    = document.getElementById('saveToolBtn');
 
@@ -150,31 +161,30 @@ const ctxChangeIcon  = document.getElementById('ctxChangeIcon');
 const ctxDelete      = document.getElementById('ctxDelete');
 
 // dialogs
-const renameDialog   = document.getElementById('renameDialog');
-const renameInput    = document.getElementById('renameInput');
-const cancelRenameBtn= document.getElementById('cancelRenameBtn');
-const confirmRenameBtn=document.getElementById('confirmRenameBtn');
+const renameDialog    = document.getElementById('renameDialog');
+const renameInput     = document.getElementById('renameInput');
+const cancelRenameBtn = document.getElementById('cancelRenameBtn');
+const confirmRenameBtn= document.getElementById('confirmRenameBtn');
 
-const updateUrlDialog     = document.getElementById('updateUrlDialog');
-const updateUrlInput      = document.getElementById('updateUrlInput');
-const cancelUpdateUrlBtn  = document.getElementById('cancelUpdateUrlBtn');
-const confirmUpdateUrlBtn = document.getElementById('confirmUpdateUrlBtn');
-
-const deleteDialog   = document.getElementById('deleteDialog');
-const deleteDialogBody=document.getElementById('deleteDialogBody');
-const cancelDeleteBtn= document.getElementById('cancelDeleteBtn');
-const confirmDeleteBtn=document.getElementById('confirmDeleteBtn');
+const deleteDialog    = document.getElementById('deleteDialog');
+const deleteDialogBody= document.getElementById('deleteDialogBody');
+const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+const confirmDeleteBtn= document.getElementById('confirmDeleteBtn');
 
 // hidden inputs
-const updateHtmlInput= document.getElementById('updateHtmlInput');
-const changeIconInput= document.getElementById('changeIconInput');
-const toast          = document.getElementById('toast');
+const updateHtmlInput = document.getElementById('updateHtmlInput');
+const changeIconInput = document.getElementById('changeIconInput');
+const toast           = document.getElementById('toast');
 
 // ── INIT ─────────────────────────────────────────────────────
 async function init() {
   if (!tabsEnabled) {
     viewer.classList.add('single-mode');
     tabsToggleLabel.textContent = 'Multi-tab: Off';
+  }
+  
+  if (viewMode === 'bookmarks') {
+    viewBookmarksBtn.classList.add('active');
   }
   applyUrlSupportState();
 
@@ -193,7 +203,7 @@ async function init() {
 // Apply URL Support Toggle Changes Visually
 function applyUrlSupportState() {
   urlSupportToggleLabel.textContent = `URL Support: ${urlSupportEnabled ? 'On' : 'Off'}`;
-  if (urlSupportEnabled) {
+  if (urlSupportEnabled && viewMode !== 'bookmarks') {
     filterWrap.classList.remove('hidden');
   } else {
     filterWrap.classList.add('hidden');
@@ -204,15 +214,58 @@ function applyUrlSupportState() {
 }
 
 // ── RENDERING ────────────────────────────────────────────────
+function renderTags() {
+  if (viewMode !== 'bookmarks') {
+    tagsWrap.classList.add('hidden');
+    return;
+  }
+  const allTags = new Set();
+  allTools.forEach(t => {
+    if (t.isBookmark && t.tags) {
+      t.tags.forEach(tag => allTags.add(tag));
+    }
+  });
+  
+  if (allTags.size === 0) {
+    tagsWrap.classList.add('hidden');
+    return;
+  }
+  
+  tagsWrap.classList.remove('hidden');
+  tagsWrap.innerHTML = '';
+
+  const allBtn = document.createElement('button');
+  allBtn.className = `tag-chip ${!activeTag ? 'active' : ''}`;
+  allBtn.textContent = 'All';
+  allBtn.addEventListener('click', () => { 
+    activeTag = null; 
+    renderGrid(filterTools(searchInput.value.trim().toLowerCase())); 
+  });
+  tagsWrap.appendChild(allBtn);
+
+  Array.from(allTags).sort().forEach(tag => {
+    const btn = document.createElement('button');
+    btn.className = `tag-chip ${activeTag === tag ? 'active' : ''}`;
+    btn.textContent = tag;
+    btn.addEventListener('click', () => { 
+      activeTag = tag; 
+      renderGrid(filterTools(searchInput.value.trim().toLowerCase())); 
+    });
+    tagsWrap.appendChild(btn);
+  });
+}
+
 function renderGrid(tools) {
+  renderTags();
+  
   toolGrid.innerHTML = '';
   const query = searchInput.value.trim().toLowerCase();
 
   emptyState.classList.toggle('hidden', allTools.length > 0 || query.length > 0 || currentFilter !== 'all');
-  noResults.classList.toggle('hidden',  !(tools.length === 0 && (query.length > 0 || currentFilter !== 'all')));
+  noResults.classList.toggle('hidden',  !(tools.length === 0 && (query.length > 0 || currentFilter !== 'all' || viewMode === 'bookmarks')));
 
-  // We only enable drag-and-drop if we are viewing the default 'all' list
-  const isDraggable = (query === '' && currentFilter === 'all');
+  // We only enable drag-and-drop if we are viewing the default list (no filters, no bookmarks)
+  const isDraggable = (query === '' && currentFilter === 'all' && viewMode === 'tools');
 
   tools.forEach((tool, i) => {
     const card = document.createElement('div');
@@ -279,7 +332,6 @@ function handleDragStart(e) {
   dragSourceCard = this;
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', this.dataset.id);
-  // Add class slightly later to allow standard ghost image creation
   setTimeout(() => this.classList.add('dragging'), 0);
 }
 
@@ -318,7 +370,7 @@ async function saveNewOrder() {
 
   // Safety check: ensure we aren't saving a partial filtered view
   const q = searchInput.value.trim().toLowerCase();
-  if (q !== '' || currentFilter !== 'all') return;
+  if (q !== '' || currentFilter !== 'all' || viewMode !== 'tools') return;
 
   const toolMap = new Map(allTools.map(t => [t.id, t]));
   allTools = newOrderIds.map((id, index) => {
@@ -330,7 +382,6 @@ async function saveNewOrder() {
     return null;
   }).filter(Boolean);
 
-  // Save the new order background task
   for (const tool of allTools) {
     dbPut(tool).catch(err => console.error(err));
   }
@@ -364,16 +415,29 @@ function formatDate(ts) {
 
 function filterTools(query) {
   let list = allTools;
-  // Apply URL / HTML Type Filter
-  if (urlSupportEnabled && currentFilter !== 'all') {
-    list = list.filter(t => {
-      const type = t.type === 'url' ? 'url' : 'html';
-      return type === currentFilter;
-    });
+  
+  if (viewMode === 'bookmarks') {
+    list = list.filter(t => t.isBookmark);
+    if (activeTag) {
+      list = list.filter(t => t.tags && t.tags.includes(activeTag));
+    }
+  } else {
+    list = list.filter(t => !t.isBookmark);
+    // Apply URL / HTML Type Filter
+    if (urlSupportEnabled && currentFilter !== 'all') {
+      list = list.filter(t => {
+        const type = t.type === 'url' ? 'url' : 'html';
+        return type === currentFilter;
+      });
+    }
   }
+
   // Apply Search
   if (query) {
-    list = list.filter(t => t.name.toLowerCase().includes(query));
+    list = list.filter(t => 
+      t.name.toLowerCase().includes(query) || 
+      (t.tags && t.tags.some(tag => tag.toLowerCase().includes(query)))
+    );
   }
   return list;
 }
@@ -409,6 +473,25 @@ filterDropdown.addEventListener('click', e => {
   renderGrid(filterTools(searchInput.value.trim().toLowerCase()));
 });
 
+viewBookmarksBtn.addEventListener('click', () => {
+  viewMode = viewMode === 'tools' ? 'bookmarks' : 'tools';
+  localStorage.setItem('viewMode', viewMode);
+  
+  if (viewMode === 'bookmarks') {
+    viewBookmarksBtn.classList.add('active');
+    filterWrap.classList.add('hidden');
+  } else {
+    viewBookmarksBtn.classList.remove('active');
+    if (urlSupportEnabled) filterWrap.classList.remove('hidden');
+  }
+  
+  activeTag = null;
+  searchInput.value = '';
+  searchClear.classList.remove('visible');
+  renderGrid(filterTools(''));
+});
+
+
 // ── LOADER ───────────────────────────────────────────────────
 function showLoader() {
   toolLoader.classList.add('visible');
@@ -433,7 +516,6 @@ function renderTab(tab, isActive) {
   el.className = 'tab' + (isActive ? ' active' : '');
   el.dataset.tabId = tab.id;
 
-  // Make it draggable
   el.draggable = true;
   el.addEventListener('dragstart', handleTabDragStart);
   el.addEventListener('dragend', handleTabDragEnd);
@@ -471,8 +553,6 @@ function renderTab(tab, isActive) {
   return el;
 }
 
-// ── TAB DRAG AND DROP HANDLERS ──
-
 function handleTabDragStart(e) {
   dragSourceTab = this;
   e.dataTransfer.effectAllowed = 'move';
@@ -507,7 +587,6 @@ function handleTabDrop(e) {
   e.preventDefault();
 }
 
-// Sync the DOM order back to the active tabs array
 function updateTabsArrayOrder() {
   const tabElements = Array.from(tabList.querySelectorAll('.tab'));
   const newOrderIds = tabElements.map(el => el.dataset.tabId);
@@ -607,6 +686,13 @@ async function launchTool(id) {
   try {
     const tool = await dbGet(id);
     if (!tool) return;
+    
+    // Bookmark handling
+    if (tool.isBookmark) {
+      window.open(tool.url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    
     if (!viewer.classList.contains('active')) {
       viewer.classList.add('active');
       hub.classList.add('slide-out');
@@ -671,9 +757,15 @@ document.getElementsByName('toolType').forEach(radio => {
     if (e.target.value === 'url') {
       htmlFileGroup.classList.add('hidden');
       urlInputGroup.classList.remove('hidden');
+      bookmarkGroup.classList.remove('hidden');
+      tagsGroup.classList.remove('hidden');
+      fetchIconBtn.style.display = 'inline-flex';
     } else {
       htmlFileGroup.classList.remove('hidden');
       urlInputGroup.classList.add('hidden');
+      bookmarkGroup.classList.add('hidden');
+      tagsGroup.classList.add('hidden');
+      fetchIconBtn.style.display = 'none';
     }
   });
 });
@@ -688,24 +780,28 @@ function openAddSheet(mode = 'add', toolId = null) {
   htmlPickText.textContent = 'Choose .html file';
   htmlPickLabel.classList.remove('has-file');
   urlInput.value = '';
+  isBookmarkCheckbox.checked = true;
+  tagsInput.value = '';
   pendingHtmlContent  = null;
   pendingNewIcon      = null;
   iconPreview.src     = '';
   iconPreview.classList.add('hidden');
   iconPlaceholder.style.display = 'flex';
   clearIconBtn.style.display    = 'none';
+  fetchIconBtn.style.display    = 'none';
+
+  bookmarkGroup.classList.add('hidden');
+  tagsGroup.classList.add('hidden');
 
   document.querySelector('input[name="toolType"][value="html"]').checked = true;
 
   if (editMode) {
-    sheetTitle.textContent = 'Edit Tool';
+    sheetTitle.textContent = 'Edit Settings';
     htmlRequired.style.display = 'none';
     saveToolBtn.textContent    = 'Save Changes';
     
     // Hide Type configuration & URL config entirely in edit mode
     toolTypeGroup.classList.add('hidden');
-    urlInputGroup.classList.add('hidden');
-    htmlFileGroup.classList.add('hidden');
 
     dbGet(toolId).then(tool => {
       if (tool) {
@@ -719,7 +815,20 @@ function openAddSheet(mode = 'add', toolId = null) {
         }
         const type = tool.type === 'url' ? 'url' : 'html';
         if (type === 'html') {
-          htmlFileGroup.classList.remove('hidden'); // allow picking new HTML like original
+          htmlFileGroup.classList.remove('hidden');
+          urlInputGroup.classList.add('hidden');
+          bookmarkGroup.classList.add('hidden');
+          tagsGroup.classList.add('hidden');
+          fetchIconBtn.style.display = 'none';
+        } else {
+          htmlFileGroup.classList.add('hidden');
+          urlInputGroup.classList.remove('hidden');
+          urlInput.value = tool.url || '';
+          bookmarkGroup.classList.remove('hidden');
+          tagsGroup.classList.remove('hidden');
+          fetchIconBtn.style.display = 'inline-flex';
+          isBookmarkCheckbox.checked = !!tool.isBookmark;
+          tagsInput.value = (tool.tags || []).join(', ');
         }
       }
     });
@@ -731,8 +840,17 @@ function openAddSheet(mode = 'add', toolId = null) {
     if (urlSupportEnabled) toolTypeGroup.classList.remove('hidden');
     else toolTypeGroup.classList.add('hidden');
 
-    htmlFileGroup.classList.remove('hidden');
-    urlInputGroup.classList.add('hidden');
+    const selectedType = document.querySelector('input[name="toolType"]:checked').value;
+    if (selectedType === 'url') {
+      htmlFileGroup.classList.add('hidden');
+      urlInputGroup.classList.remove('hidden');
+      bookmarkGroup.classList.remove('hidden');
+      tagsGroup.classList.remove('hidden');
+      fetchIconBtn.style.display = 'inline-flex';
+    } else {
+      htmlFileGroup.classList.remove('hidden');
+      urlInputGroup.classList.add('hidden');
+    }
   }
 
   addSheet.classList.remove('hidden');
@@ -786,6 +904,26 @@ clearIconBtn.addEventListener('click', () => {
   iconFileInput.value = '';
 });
 
+// Fetch Favicon
+fetchIconBtn.addEventListener('click', () => {
+  const urlVal = urlInput.value.trim();
+  if (!isValidHttpUrl(urlVal)) {
+    showToast('Enter a valid URL first', 'error');
+    return;
+  }
+  try {
+    const hostname = new URL(urlVal).hostname;
+    const favUrl = `https://www.google.com/s2/favicons?domain=${hostname}&sz=128`;
+    pendingNewIcon = favUrl;
+    iconPreview.src = favUrl;
+    iconPreview.classList.remove('hidden');
+    iconPlaceholder.style.display = 'none';
+    clearIconBtn.style.display = 'inline-flex';
+  } catch (err) {
+    showToast('Invalid URL', 'error');
+  }
+});
+
 // URL validation helper
 function isValidHttpUrl(string) {
   try {
@@ -805,11 +943,15 @@ saveToolBtn.addEventListener('click', async () => {
     
     let finalHtml = null;
     let finalUrl  = null;
+    let isBookmark = false;
+    let tags = [];
 
     if (type === 'url') {
       const urlVal = urlInput.value.trim();
       if (!isValidHttpUrl(urlVal)) { showToast('Please enter a valid HTTP/HTTPS URL', 'error'); return; }
       finalUrl = urlVal;
+      isBookmark = isBookmarkCheckbox.checked;
+      tags = tagsInput.value.split(',').map(t=>t.trim()).filter(Boolean);
     } else {
       if (!pendingHtmlContent) { showToast('Please choose an HTML file', 'error'); return; }
       finalHtml = pendingHtmlContent;
@@ -823,7 +965,9 @@ saveToolBtn.addEventListener('click', async () => {
       html:      finalHtml,
       url:       finalUrl,
       createdAt: Date.now(),
-      order:     allTools.length // place at the end by default
+      order:     allTools.length,
+      isBookmark,
+      tags
     };
 
     try {
@@ -846,6 +990,13 @@ saveToolBtn.addEventListener('click', async () => {
       const type = tool.type === 'url' ? 'url' : 'html';
       if (type === 'html' && pendingHtmlContent) {
         tool.html = pendingHtmlContent;
+      }
+      if (type === 'url') {
+        const urlVal = urlInput.value.trim();
+        if (!isValidHttpUrl(urlVal)) { showToast('Please enter a valid HTTP/HTTPS URL', 'error'); return; }
+        tool.url = urlVal;
+        tool.isBookmark = isBookmarkCheckbox.checked;
+        tool.tags = tagsInput.value.split(',').map(t=>t.trim()).filter(Boolean);
       }
       
       await dbPut(tool);
@@ -955,12 +1106,7 @@ ctxUpdateHtml.addEventListener('click', () => {
 
 ctxUpdateUrl.addEventListener('click', () => {
   closeToolMenu();
-  dbGet(activeToolId).then(tool => {
-    if (!tool) return;
-    updateUrlInput.value = tool.url || '';
-    updateUrlDialog.classList.remove('hidden');
-    setTimeout(() => { updateUrlInput.focus(); updateUrlInput.select(); }, 50);
-  });
+  openAddSheet('edit', activeToolId);
 });
 
 ctxChangeIcon.addEventListener('click', () => {
@@ -978,7 +1124,7 @@ ctxDelete.addEventListener('click', () => {
   });
 });
 
-// ── UPDATE HTML / URL ─────────────────────────────────────────
+// ── UPDATE HTML ───────────────────────────────────────────────
 updateHtmlInput.addEventListener('change', () => {
   const file = updateHtmlInput.files[0];
   if (!file) return;
@@ -998,27 +1144,6 @@ updateHtmlInput.addEventListener('change', () => {
   };
   reader.readAsText(file);
 });
-
-cancelUpdateUrlBtn.addEventListener('click', () => updateUrlDialog.classList.add('hidden'));
-confirmUpdateUrlBtn.addEventListener('click', doUpdateUrl);
-updateUrlInput.addEventListener('keydown', e => { if (e.key === 'Enter') doUpdateUrl(); });
-
-async function doUpdateUrl() {
-  const urlVal = updateUrlInput.value.trim();
-  if (!isValidHttpUrl(urlVal)) { showToast('Please enter a valid HTTP/HTTPS URL', 'error'); return; }
-  try {
-    const tool = await dbGet(activeToolId);
-    if (!tool) return;
-    tool.url = urlVal;
-    await dbPut(tool);
-    const idx = allTools.findIndex(t => t.id === activeToolId);
-    if (idx > -1) allTools[idx].url = urlVal;
-    updateUrlDialog.classList.add('hidden');
-    showToast(`URL updated`, 'success');
-  } catch (err) {
-    showToast('Update failed', 'error');
-  }
-}
 
 // ── CHANGE ICON ───────────────────────────────────────────────
 changeIconInput.addEventListener('change', () => {
@@ -1170,7 +1295,6 @@ document.addEventListener('keydown', e => {
       if (!filterDropdown.classList.contains('hidden')) filterDropdown.classList.add('hidden');
       if (!deleteDialog.classList.contains('hidden')) deleteDialog.classList.add('hidden');
       if (!renameDialog.classList.contains('hidden')) renameDialog.classList.add('hidden');
-      if (!updateUrlDialog.classList.contains('hidden')) updateUrlDialog.classList.add('hidden');
     }
   }
 });
